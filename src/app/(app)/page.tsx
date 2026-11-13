@@ -5,7 +5,7 @@ import { porCanal, porProduto, porDia, resumo } from "@/lib/painel";
 import { producaoDoDia } from "@/lib/pedido";
 import { useStore } from "@/lib/store";
 import { Botao, Dinheiro, Esqueleto, Estimativa, EtiquetaCanal, Linha, Painel, Rotulo, Selo, Vazio, cx } from "@/components/ui";
-import type { Pedido } from "@/lib/types";
+import { ehSimples, type Pedido } from "@/lib/types";
 import { FiltroPeriodo, NOME_PERIODO, usePeriodo } from "@/components/periodo";
 
 export default function PainelPage() {
@@ -150,7 +150,7 @@ function Producao({ pedidos, hoje }: { pedidos: Pedido[]; hoje: string }) {
   const resta = Math.max(0, total - vendido);
   const uso = total ? vendido / total : 0;
   const perto = uso >= 0.8;
-  const tamanhos = produtos.filter((p) => p.categoria === "feijoada" && p.ativoIfood);
+  const tamanhos = produtos.filter((p) => p.categoria === "feijoada" && !ehSimples(p));
   return (
     <Painel className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">

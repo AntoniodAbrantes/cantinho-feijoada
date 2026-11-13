@@ -5,6 +5,9 @@ export type Categoria = "feijoada" | "adicional" | "bebida";
 export type FormaPagamento = "pix" | "dinheiro" | "debito" | "credito" | "ifood_online";
 export type StatusPedido = "feito" | "entregue" | "cancelado";
 
+// Feijoada simples (sem arroz e farofa): mesmos tamanhos da completa, ids "simples-*".
+export const ehSimples = (p: { id: string }) => p.id.startsWith("simples");
+
 export interface Produto {
   id: string;
   nome: string;

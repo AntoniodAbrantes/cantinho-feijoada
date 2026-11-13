@@ -5,7 +5,7 @@ import { brl, diaLocal, kg, pctFmt } from "@/lib/format";
 import { resumo, porCanal } from "@/lib/painel";
 import { producaoDoDia } from "@/lib/pedido";
 import { useStore } from "@/lib/store";
-import type { Cenario } from "@/lib/types";
+import { ehSimples, type Cenario } from "@/lib/types";
 import { Dinheiro, Esqueleto, Estimativa, Linha, Painel, Rotulo, cx } from "@/components/ui";
 import { IconMais, IconMenos } from "@/components/icons";
 import { Titulo } from "@/components/voltar";
@@ -17,7 +17,7 @@ export default function Projecao() {
 
   const mes = diaLocal().slice(0, 7);
   const custoKg = producaoDoDia(producoes, mes + "-31", premissas)?.custoKg ?? 0;
-  const feijoadas = produtos.filter((p) => p.categoria === "feijoada" && p.ativoIfood);
+  const feijoadas = produtos.filter((p) => p.categoria === "feijoada" && !ehSimples(p));
   const proj = Object.fromEntries(cenarios.map((c) => [c.id, projecao(c.porDia, produtos, custoKg, premissas)]));
   const cen = cenarios.find((c) => c.id === sel);
   const x = cen ? proj[cen.id] : null;

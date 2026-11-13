@@ -5,7 +5,7 @@ import { calcPedido, itemDoProduto } from "@/lib/calc";
 import { brl, dataBr, diaLocal, fimDeSemana, nomeDia, reais } from "@/lib/format";
 import { producaoDoDia, taxasDoMomento } from "@/lib/pedido";
 import { useStore } from "@/lib/store";
-import type { Canal, Categoria, Desconto, FormaPagamento, Produto } from "@/lib/types";
+import { ehSimples, type Canal, type Categoria, type Desconto, type FormaPagamento, type Produto } from "@/lib/types";
 import { Botao, CANAL, Chips, Dinheiro, Esqueleto, Rotulo, Selo, cx } from "@/components/ui";
 import { Texto, Valor } from "@/components/campos";
 import { IconFechar, IconMenos, IconSeta } from "@/components/icons";
@@ -111,8 +111,8 @@ function NovoPedido() {
   };
 
   const grupo = (cat: Categoria) => ativos.filter((p) => p.categoria === cat);
-  const simples = grupo("feijoada").filter((p) => p.id.startsWith("simples"));
-  const feijoadas = grupo("feijoada").filter((p) => !p.id.startsWith("simples"));
+  const simples = grupo("feijoada").filter(ehSimples);
+  const feijoadas = grupo("feijoada").filter((p) => !ehSimples(p));
 
   return (
     <div className="mx-auto max-w-lg pb-[calc(120px+env(safe-area-inset-bottom))]">

@@ -33,10 +33,10 @@ export const produtos: Produto[] = [
   { ...base, id: "feijoada-individual", nome: "Feijoada individual", curto: "Individual", categoria: "feijoada", ordem: 1, precoWhatsapp: 3990, precoIfood: 4490, pesoFeijoadaG: 400, embalagem: 506 },
   { ...base, id: "feijoada-2", nome: "Feijoada para 2 pessoas", curto: "Pra 2", categoria: "feijoada", ordem: 2, precoWhatsapp: 7490, precoIfood: 7990, pesoFeijoadaG: 750, embalagem: 669, estimativas: ["embalagem"] },
   { ...base, id: "feijoada-3", nome: "Feijoada para 3 pessoas", curto: "Pra 3", categoria: "feijoada", ordem: 3, precoWhatsapp: 9490, precoIfood: 9990, pesoFeijoadaG: 1000, embalagem: 805, estimativas: ["embalagem"] },
-  // Fora do cardápio, só WhatsApp. Peso e embalagem iguais aos da completa: não informados.
+  // Simples: individual só no WhatsApp; 2 e 3 também no iFood. Peso e embalagem iguais aos da completa: não informados.
   { ...base, id: "simples-individual", nome: "Feijoada simples individual", curto: "Simples 1", categoria: "feijoada", ordem: 4, precoWhatsapp: 3690, precoIfood: 0, ativoIfood: false, pesoFeijoadaG: 400, embalagem: 506, estimativas: ["embalagem"] },
-  { ...base, id: "simples-2", nome: "Feijoada simples para 2", curto: "Simples 2", categoria: "feijoada", ordem: 5, precoWhatsapp: 6990, precoIfood: 0, ativoIfood: false, pesoFeijoadaG: 750, embalagem: 669, estimativas: ["embalagem"] },
-  { ...base, id: "simples-3", nome: "Feijoada simples para 3", curto: "Simples 3", categoria: "feijoada", ordem: 6, precoWhatsapp: 8790, precoIfood: 0, ativoIfood: false, pesoFeijoadaG: 1000, embalagem: 805, estimativas: ["embalagem"] },
+  { ...base, id: "simples-2", nome: "Feijoada simples para 2", curto: "Simples 2", categoria: "feijoada", ordem: 5, precoWhatsapp: 6990, precoIfood: 7390, pesoFeijoadaG: 750, embalagem: 669, estimativas: ["embalagem"] },
+  { ...base, id: "simples-3", nome: "Feijoada simples para 3", curto: "Simples 3", categoria: "feijoada", ordem: 6, precoWhatsapp: 8790, precoIfood: 9190, pesoFeijoadaG: 1000, embalagem: 805, estimativas: ["embalagem"] },
   { ...base, id: "adicional-arroz", nome: "Adicional de arroz", curto: "Arroz", categoria: "adicional", ordem: 10, precoWhatsapp: 700, precoIfood: 800, estimativas: ["custo"] },
   { ...base, id: "adicional-farofa", nome: "Adicional de farofa", curto: "Farofa", categoria: "adicional", ordem: 11, precoWhatsapp: 600, precoIfood: 700, estimativas: ["custo"] },
   { ...base, id: "adicional-couve", nome: "Adicional de couve", curto: "Couve", categoria: "adicional", ordem: 12, precoWhatsapp: 700, precoIfood: 800, estimativas: ["custo"] },
