@@ -1,0 +1,8 @@
+# Nunca enviar segredos nem dados locais no deploy pela CLI.
+service-account*.json
+.env*
+!.env.example
+.emulador/
+*-debug.log
+node_modules
+.next
