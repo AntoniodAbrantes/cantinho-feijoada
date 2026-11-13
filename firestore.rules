@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Só a conta marcada como dona lê e escreve. A marca (claim "dono") é posta
+    // pelo script `npm run usuario`, com o Admin SDK; ninguém consegue se dar ela.
+    function dono() {
+      return request.auth != null && request.auth.token.dono == true;
+    }
+
+    // Regras somam permissões: pedidos fica fora do caso geral para a validação valer.
+    match /{colecao}/{id} {
+      allow read: if dono();
+      allow write: if dono() && colecao != 'pedidos';
+    }
+
+    match /produtos/{id}/historicoPreco/{h} {
+      allow read, write: if dono();
+    }
+
+    match /pedidos/{id} {
+      allow delete: if dono();
+      allow create, update: if dono()
+        && request.resource.data.canal in ['whatsapp', 'ifood']
+        && request.resource.data.status in ['feito', 'entregue', 'cancelado']
+        && request.resource.data.itens is list;
+    }
+  }
+}

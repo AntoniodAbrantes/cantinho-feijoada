@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+/* Design system do Cantinho. Use só estes tokens. */
+@theme {
+  --color-carvao: #15110f;   /* fundo */
+  --color-brasa: #1f1916;    /* superfície */
+  --color-tisna: #2b231e;    /* superfície elevada / pressionado */
+  --color-linha: #3d322b;    /* bordas e divisórias */
+  --color-creme: #f3ead7;    /* texto */
+  --color-creme-2: #bfb39e;  /* texto secundário (AA no fundo) */
+  --color-creme-3: #93877a;  /* texto terciário (AA no fundo) */
+  --color-milho: #eba91f;    /* destaque: ação principal e número principal */
+  --color-milho-2: #c98d0c;  /* destaque pressionado */
+  --color-lucro: #9cc56b;
+  --color-prejuizo: #e8604a;
+  --color-zap: #3dbe9c;      /* canal WhatsApp */
+  --color-ifood: #f0627e;    /* canal iFood */
+
+  --font-display: var(--font-anton), Impact, sans-serif;
+  --font-sans: var(--font-barlow), "Arial Narrow", sans-serif;
+
+  --radius-card: 18px;
+  --radius-ctl: 14px;
+
+  --animate-tick: tick 180ms ease-out;
+  --animate-subir: subir 200ms ease-out;
+  --animate-brilho: brilho 1.4s ease-in-out infinite;
+}
+
+@keyframes tick {
+  from { opacity: 0.4; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes subir {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes brilho {
+  50% { opacity: 0.45; }
+}
+
+html {
+  background: var(--color-carvao);
+  color: var(--color-creme);
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  background: var(--color-carvao);
+  font-family: var(--font-sans);
+  font-size: 18px;
+  line-height: 1.35;
+  min-height: 100dvh;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-milho);
+  outline-offset: 2px;
+}
+
+/* Números alinhados nas colunas */
+.num { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

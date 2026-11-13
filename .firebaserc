@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "demo-cantinho",
+    "prod": "cantinhosistema-25043"
+  }
+}

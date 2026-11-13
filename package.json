@@ -1,0 +1,43 @@
+{
+  "name": "sistema_cantinho",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "dev:emulador": "NEXT_PUBLIC_EMULADOR=1 next dev",
+    "emuladores": "PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH firebase emulators:start --import=.emulador --export-on-exit=.emulador",
+    "seed": "tsx --env-file-if-exists=.env.local scripts/seed.mts",
+    "seed:emulador": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-cantinho tsx scripts/seed.mts --exemplos",
+    "usuario": "tsx --env-file-if-exists=.env.local scripts/usuario.mts",
+    "usuario:emulador": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-cantinho tsx scripts/usuario.mts",
+    "test": "vitest run src",
+    "test:regras": "PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH firebase emulators:exec --only firestore \"vitest run tests\"",
+    "regras:publicar": "firebase deploy --only firestore:rules,firestore:indexes --project prod"
+  },
+  "dependencies": {
+    "firebase": "^13.3.0",
+    "next": "15.5.29",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.29",
+    "firebase-admin": "^14.5.1",
+    "firebase-tools": "^15.36.0",
+    "playwright": "^1.65.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^3.2.7"
+  }
+}
