@@ -1,5 +1,6 @@
-import { custoPorKg, custoProducao } from "./calc";
-import type { Canal, FormaPagamento, Premissas, Producao } from "./types";
+import { calcPedido, custoPorKg, custoProducao } from "./calc";
+import { fimDeSemana, somaDias } from "./format";
+import { conta, type Canal, type FormaPagamento, type Pedido, type Premissas, type Producao, type StatusPedido } from "./types";
 
 export function producaoDoDia(producoes: Producao[], dia: string, prem: Premissas) {
   const p = [...producoes].sort((a, b) => b.data.localeCompare(a.data)).find((x) => x.data <= dia);
@@ -13,4 +14,15 @@ export function taxasDoMomento(canal: Canal, pagamento: FormaPagamento, p: Premi
     base: p.ifoodBaseComissao.valor,
     pagamentoBp: pagamento === "debito" ? p.maqDebitoBp.valor : pagamento === "credito" ? p.maqCreditoBp.valor : 0,
   };
+}
+
+// Panela do fim de semana do dia: produção que vale até o domingo e quanto já saiu dela.
+// O painel conta só pedido aceito; o site passa a contar também o "novo", que já reserva a feijoada.
+export function panela(producoes: Producao[], pedidos: Pedido[], prem: Premissas, dia: string, contar: (s: StatusPedido) => boolean = conta) {
+  const fds = fimDeSemana(dia);
+  const prod = producaoDoDia(producoes, somaDias(fds, 2), prem);
+  if (!prod) return null;
+  const vendido = pedidos.filter((p) => p.fimDeSemana === fds && contar(p.status)).reduce((s, p) => s + calcPedido(p).pesoG, 0);
+  const total = prod.producao.rendimentoG;
+  return { ...prod, total, vendido, resta: Math.max(0, total - vendido) };
 }

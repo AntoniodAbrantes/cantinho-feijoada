@@ -15,6 +15,7 @@
   --color-prejuizo: #e8604a;
   --color-zap: #3dbe9c;      /* canal WhatsApp */
   --color-ifood: #f0627e;    /* canal iFood */
+  --color-site: #8fb3e0;     /* canal Site */
 
   --font-display: var(--font-anton), Impact, sans-serif;
   --font-sans: var(--font-barlow), "Arial Narrow", sans-serif;
@@ -25,6 +26,7 @@
   --animate-tick: tick 180ms ease-out;
   --animate-subir: subir 200ms ease-out;
   --animate-brilho: brilho 1.4s ease-in-out infinite;
+  --animate-piscar: piscar 1s steps(1, end) infinite;
 }
 
 @keyframes tick {
@@ -37,6 +39,10 @@
 }
 @keyframes brilho {
   50% { opacity: 0.45; }
+}
+@keyframes piscar {
+  0% { opacity: 0.28; }
+  50% { opacity: 0; }
 }
 
 html {

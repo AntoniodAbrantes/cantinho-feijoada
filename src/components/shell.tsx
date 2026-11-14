@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 import { StoreProvider, useStore, useUsuario } from "@/lib/store";
+import { AlarmeProvider } from "./alarme";
 import { Selo, cx } from "./ui";
 import { IconCaixa, IconHoje, IconMais, IconMenu, IconOffline, IconPedidos } from "./icons";
 
@@ -10,23 +11,28 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const usuario = useUsuario();
   const rota = usePathname();
   const router = useRouter();
-  const publica = rota === "/entrar";
+  const publica = rota === "/admin/entrar";
   useEffect(() => {
-    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+    // O SW só cuida do sistema; registros antigos com escopo na raiz pegariam o site público.
+    navigator.serviceWorker.getRegistrations().then((rs) => rs.filter((r) => !r.scope.endsWith("/admin")).forEach((r) => r.unregister()));
+    navigator.serviceWorker.register("/sw.js", { scope: "/admin" });
   }, []);
   useEffect(() => {
-    if (usuario === null && !publica) router.replace("/entrar");
-    if (usuario && publica) router.replace("/");
+    if (usuario === null && !publica) router.replace("/admin/entrar");
+    if (usuario && publica) router.replace("/admin");
   }, [usuario, publica, router]);
 
   if (publica) return children;
   if (!usuario) return <Abertura />;
   return (
     <StoreProvider usuario={usuario}>
-      <SemInternet />
-      <ErroDados />
-      {children}
-      <AvisoFlutuante />
+      <AlarmeProvider>
+        <SemInternet />
+        <ErroDados />
+        {children}
+        <AvisoFlutuante />
+      </AlarmeProvider>
     </StoreProvider>
   );
 }
@@ -95,11 +101,11 @@ function AvisoFlutuante() {
 }
 
 const ABAS = [
-  { href: "/", nome: "Hoje", Icone: IconHoje },
-  { href: "/pedidos", nome: "Pedidos", Icone: IconPedidos },
+  { href: "/admin", nome: "Hoje", Icone: IconHoje },
+  { href: "/admin/pedidos", nome: "Pedidos", Icone: IconPedidos },
   null,
-  { href: "/caixa", nome: "Caixa", Icone: IconCaixa },
-  { href: "/mais", nome: "Mais", Icone: IconMenu },
+  { href: "/admin/caixa", nome: "Caixa", Icone: IconCaixa },
+  { href: "/admin/mais", nome: "Mais", Icone: IconMenu },
 ];
 
 export function BarraInferior() {
@@ -125,7 +131,7 @@ export function BarraInferior() {
           ) : (
             <li key="novo" className="flex justify-center">
               <Link
-                href="/novo"
+                href="/admin/novo"
                 aria-label="Novo pedido"
                 className="-mt-7 grid size-[68px] place-items-center rounded-full bg-milho text-carvao ring-[6px] ring-carvao transition-transform duration-150 active:scale-95"
               >
@@ -140,7 +146,7 @@ export function BarraInferior() {
 }
 
 // Painel e Pedidos aproveitam a tela do computador; o resto fica na coluna do celular.
-const LARGAS = ["/", "/pedidos"];
+const LARGAS = ["/admin", "/admin/pedidos", "/admin/ao-vivo"];
 export function Conteudo({ children }: { children: React.ReactNode }) {
   const larga = LARGAS.includes(usePathname());
   return <main className={cx("mx-auto px-4 pb-32 pt-[max(16px,env(safe-area-inset-top))]", larga ? "max-w-lg lg:max-w-5xl lg:px-8" : "max-w-lg")}>{children}</main>;

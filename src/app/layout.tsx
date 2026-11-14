@@ -1,15 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Anton, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/shell";
 
 const anton = Anton({ variable: "--font-anton", weight: "400", subsets: ["latin"] });
 const barlow = Barlow_Condensed({ variable: "--font-barlow", weight: ["400", "500", "600", "700"], subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Cantinho da Feijoada",
-  description: "Gestão do Cantinho da Feijoada",
-  appleWebApp: { capable: true, title: "Cantinho", statusBarStyle: "black-translucent" },
+  title: "Cantinho da Feijoada · delivery em João Pessoa",
+  description: "Dessa vez, o Cantinho vai até você. Feijoada completa no delivery em João Pessoa, sexta, sábado e domingo, no almoço.",
+  openGraph: { title: "Cantinho da Feijoada", description: "Dessa vez, o Cantinho vai até você.", locale: "pt_BR", type: "website" },
 };
 
 export const viewport: Viewport = {
@@ -23,7 +22,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="pt-BR" className={`${anton.variable} ${barlow.variable}`}>
       <body className="antialiased">
-        <Providers>{children}</Providers>
+        {children}
       </body>
     </html>
   );

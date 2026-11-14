@@ -2,13 +2,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { collection, doc, increment, onSnapshot, orderBy, query, writeBatch, type WriteBatch } from "firebase/firestore";
-import { baixaEstoque } from "./calc";
+import { baixaEstoque, calcPedido } from "./calc";
 import { fb } from "./firebase";
-import type { Cenario, Compra, Pedido, Premissas, Producao, Produto, StatusPedido } from "./types";
+import { conta, type Loja, type Cenario, type Compra, type Pedido, type Premissas, type Producao, type Produto, type StatusPedido } from "./types";
 
 // set faz merge; delete apaga. Tudo num lote só: atômico e funciona offline.
 export type Op = { caminho: string; dados?: object; apagar?: boolean };
 export const novoId = (colecao: string) => doc(collection(fb().db, colecao)).id;
+
+// Recusa com motivo e taxa de entrega ajustada no aceite (pedido do site mais longe que 4 km).
+export type Extra = Partial<Pick<Pedido, "taxaEntrega" | "motivoRecusa">>;
+
+// O que dá pra mudar num pedido já lançado (data, canal, status e dados do site ficam).
+export type Edicao = Pick<Pedido, "itens" | "desconto" | "taxaEntrega" | "custoEntrega" | "pagamento" | "taxas" | "cliente" | "bairro" | "obs">;
 
 type Aviso = { id: number; texto: string; desfazer?: () => void; erro?: boolean };
 
@@ -27,7 +33,8 @@ interface Store extends Omit<Dados, "premissas"> {
   erro: string | null;
   salvarPedido: (p: Omit<Pedido, "id">) => string;
   removerPedido: (id: string) => void;
-  mudarStatus: (p: Pedido, status: StatusPedido) => void;
+  mudarStatus: (p: Pedido, status: StatusPedido, extra?: Extra) => void;
+  editarPedido: (antes: Pedido, mudancas: Edicao) => void;
   lote: (ops: Op[]) => void;
   aviso: Aviso | null;
   avisar: (texto: string, desfazer?: () => void, erro?: boolean) => void;
@@ -122,20 +129,50 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
       const alvo = pedidosRef.current.find((p) => p.id === id);
       const b = writeBatch(db);
       b.delete(doc(db, "pedidos", id));
-      if (alvo && alvo.status !== "cancelado") estoqueNoLote(b, alvo.itens, 1);
+      if (alvo && conta(alvo.status)) estoqueNoLote(b, alvo.itens, 1);
+      if (alvo?.rastreio) b.delete(doc(db, "rastreio", alvo.rastreio));
       commit(b);
     },
     [commit],
   );
 
-  // Cancelar devolve as bebidas ao estoque; tirar do cancelado baixa de novo.
+  // Bebida baixa quando o pedido passa a contar (aceite, reabrir) e volta quando deixa (cancelar).
+  // O cliente do site acompanha pelo rastreio: muda junto, no mesmo lote.
   const mudarStatus = useCallback(
-    (p: Pedido, status: StatusPedido) => {
+    (p: Pedido, status: StatusPedido, extra: Extra = {}) => {
       const { db } = fb();
       const b = writeBatch(db);
-      b.update(doc(db, "pedidos", p.id), { status });
-      if (status === "cancelado" && p.status !== "cancelado") estoqueNoLote(b, p.itens, 1);
-      if (status !== "cancelado" && p.status === "cancelado") estoqueNoLote(b, p.itens, -1);
+      b.update(doc(db, "pedidos", p.id), { status, ...extra, ...(p.status === "novo" && status === "feito" && { aceitoEm: Date.now() }) });
+      const taxa = extra.taxaEntrega !== undefined && { taxaEntrega: extra.taxaEntrega, total: calcPedido({ ...p, ...extra }).cobrado };
+      if (p.rastreio) b.update(doc(db, "rastreio", p.rastreio), { status, ...(extra.motivoRecusa !== undefined && { motivoRecusa: extra.motivoRecusa }), ...taxa });
+      if (conta(p.status) && !conta(status)) estoqueNoLote(b, p.itens, 1);
+      if (!conta(p.status) && conta(status)) estoqueNoLote(b, p.itens, -1);
+      commit(b);
+    },
+    [commit],
+  );
+
+  // Bebida: só a diferença entre antes e depois, e só se o pedido conta.
+  const editarPedido = useCallback(
+    (antes: Pedido, m: Edicao) => {
+      const { db } = fb();
+      const b = writeBatch(db);
+      b.update(doc(db, "pedidos", antes.id), m);
+      if (conta(antes.status)) {
+        const de = baixaEstoque(antes.itens);
+        const para = baixaEstoque(m.itens);
+        for (const id of new Set([...Object.keys(de), ...Object.keys(para)])) {
+          const d = (para[id] ?? 0) - (de[id] ?? 0);
+          if (d) b.update(doc(db, "produtos", id), { estoque: increment(-d) });
+        }
+      }
+      if (antes.rastreio)
+        b.update(doc(db, "rastreio", antes.rastreio), {
+          itens: m.itens.map((i) => ({ nome: i.nome, qtd: i.qtd, preco: i.preco })),
+          taxaEntrega: m.taxaEntrega,
+          total: calcPedido({ ...antes, ...m }).cobrado,
+          pagamento: m.pagamento,
+        });
       commit(b);
     },
     [commit],
@@ -156,13 +193,20 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
 
   const carregando = prontas < COLECOES || !dados.premissas;
   const valor = useMemo<Store>(
-    () => ({ ...dados, premissas: dados.premissas!, carregando, erro, salvarPedido, removerPedido, mudarStatus, lote, aviso, avisar }),
-    [dados, carregando, erro, salvarPedido, removerPedido, mudarStatus, lote, aviso, avisar],
+    () => ({ ...dados, premissas: dados.premissas!, carregando, erro, salvarPedido, removerPedido, mudarStatus, editarPedido, lote, aviso, avisar }),
+    [dados, carregando, erro, salvarPedido, removerPedido, mudarStatus, editarPedido, lote, aviso, avisar],
   );
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
 
 export const useStore = () => useContext(Ctx)!;
+
+// config/loja ao vivo (só as telas que mexem com o site usam). Sem documento = fechada.
+export function useLoja() {
+  const [loja, setLoja] = useState<Loja | null>(null);
+  useEffect(() => onSnapshot(doc(fb().db, "config", "loja"), (s) => setLoja((s.data() as Loja | undefined) ?? { modo: "fechada", horarios: {} })), []);
+  return loja;
+}
 
 export function useUsuario() {
   const [u, setU] = useState<User | null | undefined>(undefined);

@@ -27,7 +27,9 @@ export function Botao({ variante = "secundario", className, ...p }: BtnProps) {
 export const CANAL = {
   whatsapp: { nome: "WhatsApp", sigla: "Zap", cor: "text-zap", fundo: "bg-zap", borda: "border-zap" },
   ifood: { nome: "iFood", sigla: "iFood", cor: "text-ifood", fundo: "bg-ifood", borda: "border-ifood" },
+  site: { nome: "Site", sigla: "Site", cor: "text-site", fundo: "bg-site", borda: "border-site" },
 } as const;
+export const CANAIS = Object.keys(CANAL) as Canal[];
 
 export function EtiquetaCanal({ canal, curta }: { canal: Canal; curta?: boolean }) {
   const c = CANAL[canal];

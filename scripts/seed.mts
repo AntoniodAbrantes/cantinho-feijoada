@@ -5,6 +5,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import * as seed from "../src/data/seed";
 import { exemplos } from "../src/data/exemplos";
 import { baixaEstoque } from "../src/lib/calc";
+import { conta } from "../src/lib/types";
 import { db, noEmulador } from "./admin.mts";
 
 const comExemplos = process.argv.includes("--exemplos");
@@ -24,7 +25,13 @@ async function criar(caminho: string, dados: object) {
 const semId = (x: { id: string }) => Object.fromEntries(Object.entries(x).filter(([k]) => k !== "id"));
 
 await criar("config/premissas", seed.premissas);
+await criar("config/loja", seed.loja);
 for (const p of seed.produtos) await criar(`produtos/${p.id}`, semId(p));
+// Produtos de antes do site: ganham "ativoSite" do seed, uma vez (não mexe se já foi definido).
+for (const p of seed.produtos) {
+  const ref = db.doc(`produtos/${p.id}`);
+  if ((await ref.get()).get("ativoSite") === undefined) await ref.update({ ativoSite: p.ativoSite });
+}
 for (const p of seed.producoes) await criar(`producoes/${p.id}`, semId(p));
 for (const c of seed.compras) await criar(`compras/${c.id}`, semId(c));
 for (const c of seed.cenarios) await criar(`cenarios/${c.id}`, semId(c));
@@ -33,7 +40,7 @@ if (comExemplos && (await db.collection("pedidos").limit(1).get()).empty) {
   for (const p of exemplos()) {
     const b = db.batch();
     b.create(db.doc(`pedidos/${p.id}`), semId(p));
-    for (const [id, q] of Object.entries(baixaEstoque(p.itens))) b.update(db.doc(`produtos/${id}`), { estoque: FieldValue.increment(-q) });
+    if (conta(p.status)) for (const [id, q] of Object.entries(baixaEstoque(p.itens))) b.update(db.doc(`produtos/${id}`), { estoque: FieldValue.increment(-q) });
     await b.commit();
     criados++;
   }

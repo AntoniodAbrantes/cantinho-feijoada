@@ -1,5 +1,5 @@
 import { calcPedido } from "./calc";
-import type { Canal, Pedido } from "./types";
+import { conta, type Canal, type Pedido } from "./types";
 
 const ZERO = { pedidos: 0, bruto: 0, desconto: 0, liquido: 0, taxaEntrega: 0, cobrado: 0, taxasIfood: 0, taxaPagamento: 0, custo: 0, recebido: 0, lucro: 0, maoDeObra: 0, pesoG: 0 };
 export type Resumo = typeof ZERO & { margem: number; ticket: number; pctDesconto: number };
@@ -7,7 +7,7 @@ export type Resumo = typeof ZERO & { margem: number; ticket: number; pctDesconto
 export function resumo(pedidos: Pedido[]): Resumo {
   const r = { ...ZERO };
   for (const p of pedidos) {
-    if (p.status === "cancelado") continue;
+    if (!conta(p.status)) continue;
     const t = calcPedido(p);
     r.pedidos++;
     r.taxaEntrega += p.taxaEntrega;
@@ -24,12 +24,13 @@ export function resumo(pedidos: Pedido[]): Resumo {
 export const porCanal = (pedidos: Pedido[]): Record<Canal, Resumo> => ({
   whatsapp: resumo(pedidos.filter((p) => p.canal === "whatsapp")),
   ifood: resumo(pedidos.filter((p) => p.canal === "ifood")),
+  site: resumo(pedidos.filter((p) => p.canal === "site")),
 });
 
 export function porProduto(pedidos: Pedido[]) {
   const m = new Map<string, { nome: string; qtd: number; valor: number }>();
   for (const p of pedidos) {
-    if (p.status === "cancelado") continue;
+    if (!conta(p.status)) continue;
     for (const i of p.itens) {
       const x = m.get(i.produtoId) ?? { nome: i.nome, qtd: 0, valor: 0 };
       x.qtd += i.qtd;
@@ -43,7 +44,7 @@ export function porProduto(pedidos: Pedido[]) {
 export function porDia(pedidos: Pedido[]) {
   const m = new Map<string, { cobrado: number; pedidos: number }>();
   for (const p of pedidos) {
-    if (p.status === "cancelado") continue;
+    if (!conta(p.status)) continue;
     const x = m.get(p.dia) ?? { cobrado: 0, pedidos: 0 };
     x.cobrado += calcPedido(p).cobrado;
     x.pedidos++;

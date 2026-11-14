@@ -17,11 +17,17 @@ service cloud.firestore {
       allow read, write: if dono();
     }
 
+    // Acompanhamento do cliente do site: só quem tem o token (id longo e aleatório) lê, um por vez.
+    // Quem cria é a rota de pedido do servidor (Admin SDK, fora das regras); o dono atualiza o status.
+    match /rastreio/{token} {
+      allow get: if true;
+    }
+
     match /pedidos/{id} {
       allow delete: if dono();
       allow create, update: if dono()
-        && request.resource.data.canal in ['whatsapp', 'ifood']
-        && request.resource.data.status in ['feito', 'entregue', 'cancelado']
+        && request.resource.data.canal in ['whatsapp', 'ifood', 'site']
+        && request.resource.data.status in ['novo', 'feito', 'saiu', 'entregue', 'cancelado']
         && request.resource.data.itens is list;
     }
   }

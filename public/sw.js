@@ -1,6 +1,6 @@
 // Service worker mínimo: o app abre sem internet. Os dados offline ficam com o Firestore (IndexedDB).
 // shortcut: cache simples por URL; trocar por Serwist se precisar de pré-cache ou versões.
-const CACHE = "cantinho-v1";
+const CACHE = "cantinho-v2";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
@@ -19,7 +19,7 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fetch(req)
       .then((res) => guardar(req, res))
-      .catch(() => caches.match(req).then((r) => r || (req.mode === "navigate" ? caches.match("/") : Response.error()))),
+      .catch(() => caches.match(req).then((r) => r || (req.mode === "navigate" ? caches.match("/admin") : Response.error()))),
   );
 });
 
@@ -30,3 +30,14 @@ function guardar(req, res) {
   }
   return res;
 }
+
+// Toque na notificação de pedido novo: volta pro sistema aberto ou abre a tela ao vivo.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
+      const aberta = ws.find((w) => new URL(w.url).pathname.startsWith("/admin"));
+      return aberta ? aberta.focus() : self.clients.openWindow("/admin/ao-vivo");
+    }),
+  );
+});

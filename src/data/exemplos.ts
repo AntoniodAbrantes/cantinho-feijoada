@@ -17,6 +17,7 @@ export function exemplos(): Pedido[] {
     ["whatsapp", [["feijoada-2", 1]], 500, "pix", 12.2],
     ["whatsapp", [["feijoada-3", 1], ["coca-zero-1l", 1]], 0, "credito", 12.5],
     ["ifood", [["feijoada-individual", 1], ["coca-zero-lata", 1]], 0, "ifood_online", 12.8],
+    ["site", [["feijoada-2", 1], ["coca-lata", 2]], 0, "dinheiro", 13],
   ];
   return lista.map(([canal, itens, desconto, pagamento, hora], i) => ({
     id: `ex${i}`,
@@ -32,7 +33,7 @@ export function exemplos(): Pedido[] {
     taxas: taxasDoMomento(canal, pagamento, seed.premissas),
     cliente: "",
     bairro: "",
-    status: i < 4 ? "entregue" : "feito",
+    status: canal === "site" ? "novo" : i < 4 ? "entregue" : "feito",
     obs: "",
     producaoId: pr.producao.id,
   }));

@@ -3,7 +3,7 @@ import { useId } from "react";
 import { Chips, cx } from "./ui";
 import type { Tipo } from "@/lib/meta";
 
-const base =
+export const estiloCampo =
   "min-h-12 w-full rounded-[var(--radius-ctl)] border border-linha bg-carvao px-3 text-lg text-creme placeholder:text-creme-3 focus:border-milho focus:outline-none";
 
 export function Campo({ rotulo, children, className }: { rotulo: string; children: (id: string) => React.ReactNode; className?: string }) {
@@ -21,7 +21,7 @@ export function Campo({ rotulo, children, className }: { rotulo: string; childre
 export function Texto({ rotulo, valor, onChange, placeholder, className }: { rotulo: string; valor: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
   return (
     <Campo rotulo={rotulo} className={className}>
-      {(id) => <input id={id} value={valor} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={base} />}
+      {(id) => <input id={id} value={valor} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={estiloCampo} />}
     </Campo>
   );
 }
@@ -32,7 +32,7 @@ export function Valor({ rotulo, valor, onChange, sufixo, prefixo = "R$", casas =
   return (
     <Campo rotulo={rotulo} className={className}>
       {(id) => (
-        <div className={cx(base, "flex items-center gap-2 focus-within:border-milho")}>
+        <div className={cx(estiloCampo, "flex items-center gap-2 focus-within:border-milho")}>
           {prefixo && <span className="text-creme-3">{prefixo}</span>}
           <input
             id={id}

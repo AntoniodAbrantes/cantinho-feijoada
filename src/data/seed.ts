@@ -1,5 +1,5 @@
 // Dados iniciais (seção 5 do pedido). Fonte única: seed do Firestore e telas de exemplo.
-import type { Cenario, Compra, Premissas, Producao, Produto } from "@/lib/types";
+import type { Cenario, Compra, Loja, Premissas, Producao, Produto } from "@/lib/types";
 
 const prem = (valor: number, origem = "", estimativa = false) => ({ valor, origem, estimativa });
 
@@ -16,7 +16,7 @@ export const premissas: Premissas = {
   ifoodLimiteMensalidade: prem(180000, "Pesquisa de 09/11/2026", true),
   diasVendaMes: prem(13, "Sexta, sábado e domingo"),
   parteIfoodBp: prem(5000, "O resto é WhatsApp", true),
-  taxaEntrega: prem(800, "Até 3 km"),
+  taxaEntrega: prem(0, "Grátis até 4 km"),
   custoEntrega: prem(300, "Gasolina e entregador", true),
   das: prem(8205, "Confirmar com contador", true),
   divulgacao: prem(0, ""),
@@ -27,13 +27,13 @@ export const premissas: Premissas = {
   maqCredito12xBp: prem(1238, "Não recomendado"),
 };
 
-const base = { custo: 0, pesoFeijoadaG: 0, embalagem: 0, ativoWhatsapp: true, ativoIfood: true, estimativas: [] as string[] };
+const base = { custo: 0, pesoFeijoadaG: 0, embalagem: 0, ativoWhatsapp: true, ativoIfood: true, ativoSite: true, estimativas: [] as string[] };
 
 export const produtos: Produto[] = [
   { ...base, id: "feijoada-individual", nome: "Feijoada individual", curto: "Individual", categoria: "feijoada", ordem: 1, precoWhatsapp: 3990, precoIfood: 4490, pesoFeijoadaG: 400, embalagem: 506 },
   { ...base, id: "feijoada-2", nome: "Feijoada para 2 pessoas", curto: "Pra 2", categoria: "feijoada", ordem: 2, precoWhatsapp: 7490, precoIfood: 7990, pesoFeijoadaG: 750, embalagem: 669, estimativas: ["embalagem"] },
   { ...base, id: "feijoada-3", nome: "Feijoada para 3 pessoas", curto: "Pra 3", categoria: "feijoada", ordem: 3, precoWhatsapp: 9490, precoIfood: 9990, pesoFeijoadaG: 1000, embalagem: 805, estimativas: ["embalagem"] },
-  // Simples: individual só no WhatsApp; 2 e 3 também no iFood. Peso e embalagem iguais aos da completa: não informados.
+  // Simples: fora do site; individual só no WhatsApp; 2 e 3 também no iFood. Peso e embalagem iguais aos da completa: não informados.
   { ...base, id: "simples-individual", nome: "Feijoada simples individual", curto: "Simples 1", categoria: "feijoada", ordem: 4, precoWhatsapp: 3690, precoIfood: 0, ativoIfood: false, pesoFeijoadaG: 400, embalagem: 506, estimativas: ["embalagem"] },
   { ...base, id: "simples-2", nome: "Feijoada simples para 2", curto: "Simples 2", categoria: "feijoada", ordem: 5, precoWhatsapp: 6990, precoIfood: 7390, pesoFeijoadaG: 750, embalagem: 669, estimativas: ["embalagem"] },
   { ...base, id: "simples-3", nome: "Feijoada simples para 3", curto: "Simples 3", categoria: "feijoada", ordem: 6, precoWhatsapp: 8790, precoIfood: 9190, pesoFeijoadaG: 1000, embalagem: 805, estimativas: ["embalagem"] },
@@ -45,6 +45,9 @@ export const produtos: Produto[] = [
   { ...base, id: "coca-1l", nome: "Coca-Cola 1 L", curto: "Coca 1 L", categoria: "bebida", ordem: 22, precoWhatsapp: 1200, precoIfood: 1290, custo: 679, estoque: 6, estimativas: ["custo"] },
   { ...base, id: "coca-zero-1l", nome: "Coca-Cola zero 1 L", curto: "Zero 1 L", categoria: "bebida", ordem: 23, precoWhatsapp: 1200, precoIfood: 1290, custo: 679, estoque: 6, estimativas: ["custo"] },
 ];
+
+// Horário ainda não definido: no modo "auto" sem horário a loja fica fechada; abre pelo botão manual.
+export const loja: Loja = { modo: "auto", horarios: {} };
 
 const ins = (nome: string, precoPago: number, pesoPacoteG: number | null, usadoG: number | null, custo: number, obs: string) =>
   ({ nome, precoPago, pesoPacoteG, usadoG, custo, obs });

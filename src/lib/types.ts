@@ -1,9 +1,13 @@
 // Dinheiro em centavos, percentuais em pontos-base (1% = 100), pesos em gramas.
 
-export type Canal = "whatsapp" | "ifood";
+export type Canal = "whatsapp" | "ifood" | "site";
 export type Categoria = "feijoada" | "adicional" | "bebida";
 export type FormaPagamento = "pix" | "dinheiro" | "debito" | "credito" | "ifood_online";
-export type StatusPedido = "feito" | "entregue" | "cancelado";
+// "novo": pedido do site esperando aceite (fora do faturamento e do estoque). Aceitar = virar "feito".
+export type StatusPedido = "novo" | "feito" | "saiu" | "entregue" | "cancelado";
+
+// Só "novo" e "cancelado" não contam: não entram nos totais nem baixam bebida.
+export const conta = (s: StatusPedido) => s !== "novo" && s !== "cancelado";
 
 // Feijoada simples (sem arroz e farofa): mesmos tamanhos da completa, ids "simples-*".
 export const ehSimples = (p: { id: string }) => p.id.startsWith("simples");
@@ -18,6 +22,8 @@ export interface Produto {
   precoIfood: number;
   ativoWhatsapp: boolean;
   ativoIfood: boolean;
+  ativoSite?: boolean; // site usa o preço do WhatsApp; ausente = fora do site
+  esgotadoSite?: boolean; // marcado à mão
   custo: number; // adicional e bebida; feijoada usa peso × custo/kg
   pesoFeijoadaG: number;
   embalagem: number;
@@ -116,6 +122,29 @@ export interface Pedido extends PedidoBase {
   status: StatusPedido;
   obs: string;
   producaoId: string;
+  // Pedidos do site
+  numero?: number; // sequencial, para falar com o cliente
+  telefone?: string; // só dígitos, com DDD
+  endereco?: Endereco;
+  trocoPara?: number;
+  rastreio?: string; // id de rastreio/{token}: o que o cliente vê
+  aceitoEm?: number;
+  motivoRecusa?: string;
+}
+
+export interface Endereco {
+  rua: string;
+  numero: string;
+  bairro: string;
+  complemento: string;
+  referencia: string;
+}
+
+// config/loja. Horário "hh:mm" no fuso de Fortaleza; dia sem horário = fechado.
+export type DiaLoja = "sexta" | "sabado" | "domingo";
+export interface Loja {
+  modo: "auto" | "aberta" | "fechada";
+  horarios: Partial<Record<DiaLoja, { inicio: string; fim: string }>>;
 }
 
 export type CategoriaCompra =
