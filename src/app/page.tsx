@@ -114,7 +114,7 @@ export default async function Site() {
                   : `${dados ? `${dados.taxaEntrega ? brl(dados.taxaEntrega) : "Grátis"} até 4 km` : "Até 4 km"}, em João Pessoa. Mais longe, a gente confirma o valor pelo WhatsApp antes de sair.`}
               </Passo>
               <Passo n={3} titulo="Pagamento">
-                Na entrega: Pix, dinheiro, débito ou crédito.
+                Pix na hora, com QR code, ou na entrega: Pix, dinheiro, débito ou crédito.
               </Passo>
             </ol>
             <Foto src={FOTOS.potes} alt="Potes da feijoada prontos para entrega" />

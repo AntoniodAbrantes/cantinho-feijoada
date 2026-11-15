@@ -11,8 +11,10 @@ export function usePeriodo(inicial: Periodo = "hoje") {
   const [periodo, setPeriodo] = useState<Periodo>(inicial);
   const [de, setDe] = useState(fimDeSemana(hoje));
   const [ate, setAte] = useState(hoje);
+  // Encomenda (dia futuro) só entra nas vendas quando o dia chega; até lá fica na lista de encomendas.
   const dentro = (dia: string) =>
-    periodo === "hoje" ? dia === hoje : periodo === "fds" ? fimDeSemana(dia) === fimDeSemana(hoje) : periodo === "mes" ? dia.slice(0, 7) === hoje.slice(0, 7) : dia >= de && dia <= ate;
+    dia <= hoje &&
+    (periodo === "hoje" ? dia === hoje : periodo === "fds" ? fimDeSemana(dia) === fimDeSemana(hoje) : periodo === "mes" ? dia.slice(0, 7) === hoje.slice(0, 7) : dia >= de && dia <= ate);
   return { hoje, periodo, setPeriodo, de, setDe, ate, setAte, dentro };
 }
 

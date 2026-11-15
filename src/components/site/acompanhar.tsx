@@ -5,9 +5,10 @@ import { getApps, initializeApp } from "firebase/app";
 import { connectFirestoreEmulator, doc, getFirestore, onSnapshot } from "firebase/firestore";
 import { Selo, cx } from "@/components/ui";
 import { config, emulador } from "@/lib/firebase-config";
-import { LINK_AVALIACAO_GOOGLE, linkWhatsapp } from "@/lib/contato";
+import { LINK_AVALIACAO_GOOGLE, PIX, linkWhatsapp } from "@/lib/contato";
 import { taxaTexto } from "@/lib/entrega";
 import { brl, horaLocal } from "@/lib/format";
+import { pixCopiaECola } from "@/lib/pix";
 import { NOME_PAGAMENTO, type PagamentoSite } from "@/lib/site";
 import type { StatusPedido } from "@/lib/types";
 import { IconEstrela } from "@/components/icons";
@@ -114,6 +115,8 @@ export function Acompanhar({ token }: { token: string }) {
             </ol>
           )}
 
+          {r.pagamento === "pix" && PIX.nome && PIX.cidade && ["novo", "feito", "saiu"].includes(r.status) && <PagarPix numero={r.numero} total={r.total} />}
+
           {r.status === "entregue" && <Avaliar token={token} feita={r.avaliacao?.nota} />}
 
           <section className="flex flex-col gap-2 rounded-[var(--radius-card)] bg-brasa p-4">
@@ -134,7 +137,7 @@ export function Acompanhar({ token }: { token: string }) {
               <span className="num font-display text-3xl">{brl(r.total)}</span>
             </p>
             <p className="text-creme-2">
-              {NOME_PAGAMENTO[r.pagamento]} na entrega{r.trocoPara ? ` · troco pra ${brl(r.trocoPara)}` : ""}
+              {NOME_PAGAMENTO[r.pagamento]} {r.pagamento === "pix" && PIX.nome && PIX.cidade ? "agora ou na entrega" : "na entrega"}{r.trocoPara ? ` · troco pra ${brl(r.trocoPara)}` : ""}
             </p>
           </section>
 
@@ -153,6 +156,48 @@ export function Acompanhar({ token }: { token: string }) {
         Voltar pro cardápio
       </Link>
     </main>
+  );
+}
+
+// Pix com o valor do pedido. O total vem do rastreio (servidor/admin), então segue qualquer ajuste na taxa.
+function PagarPix({ numero, total }: { numero: number; total: number }) {
+  const codigo = pixCopiaECola({ ...PIX, valor: total, txid: `PEDIDO${numero}` });
+  const [svg, setSvg] = useState("");
+  const [copiado, setCopiado] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    import("qrcode").then((q) => q.toString(codigo, { type: "svg", margin: 2, errorCorrectionLevel: "M" })).then((s) => vivo && setSvg(s));
+    return () => {
+      vivo = false;
+    };
+  }, [codigo]);
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(codigo);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch {
+      prompt("Copia o código Pix:", codigo); // navegador sem acesso à área de transferência
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-milho p-4">
+      <h2 className="font-display text-2xl uppercase">Paga com Pix</h2>
+      <p className="text-lg text-creme-2">
+        Valor de <span className="num text-creme">{brl(total)}</span> já preenchido. Pode pagar agora ou na entrega.
+      </p>
+      {/* QR sempre em fundo branco: câmera de banco lê melhor. */}
+      <div role="img" aria-label="QR code do Pix" className="mx-auto aspect-square w-56 rounded-[var(--radius-ctl)] bg-white" dangerouslySetInnerHTML={{ __html: svg }} />
+      <button onClick={copiar} className={cx(botaoPrincipal, "w-full")}>
+        {copiado ? "Código copiado!" : "Copiar código Pix"}
+      </button>
+      <p role="status" className="text-creme-2">
+        {copiado ? "Agora cola no app do seu banco, em Pix copia e cola." : "Pagou? Manda o comprovante no WhatsApp."}
+      </p>
+    </section>
   );
 }
 

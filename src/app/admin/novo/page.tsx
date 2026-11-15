@@ -3,12 +3,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { calcPedido, itemDoProduto } from "@/lib/calc";
-import { brl, dataBr, diaLocal, fimDeSemana, nomeDia, reais } from "@/lib/format";
+import { brl, dataBr, diaLocal, fimDeSemana, nomeDia, reais, somaDias } from "@/lib/format";
 import { producaoDoDia, taxasDoMomento } from "@/lib/pedido";
 import { useStore, type Edicao } from "@/lib/store";
 import { ehSimples, type Canal, type Categoria, type Desconto, type FormaPagamento, type Pedido, type Produto } from "@/lib/types";
 import { Botao, CANAL, Chips, Dinheiro, Esqueleto, Rotulo, Selo, cx } from "@/components/ui";
-import { Texto, Valor } from "@/components/campos";
+import { Campo, Texto, Valor, estiloCampo } from "@/components/campos";
 import { IconFechar, IconMenos, IconSeta } from "@/components/icons";
 
 const PAGAMENTOS: { v: FormaPagamento; t: string }[] = [
@@ -75,8 +75,12 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
   const [bairro, setBairro] = useState(o?.bairro ?? "");
   const [obs, setObs] = useState(o?.obs ?? "");
   const [detalhes, setDetalhes] = useState(false);
+  // Encomenda: pedido de outro dia (ex.: feijoada pra 50 pessoas no dia 30). Conta nas vendas do dia da entrega.
+  const [encomenda, setEncomenda] = useState("");
 
-  const hoje = o?.dia ?? diaLocal();
+  const amanha = somaDias(diaLocal(), 1);
+  const hoje = o?.dia ?? (encomenda || diaLocal());
+  const dataInvalida = encomenda !== "" && encomenda < amanha;
   const prod = producaoDoDia(producoes, hoje, premissas);
   const noPedido = (p: Produto) => !!o?.itens.some((i) => i.produtoId === p.id);
   const vende = (p: Produto) => (canal === "ifood" ? p.ativoIfood : canal === "site" ? p.ativoSite : p.ativoWhatsapp);
@@ -117,6 +121,7 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
     setBairro("");
     setObs("");
     setDetalhes(false);
+    setEncomenda("");
   };
 
   const salvar = () => {
@@ -141,7 +146,7 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
       producaoId: prod?.producao.id ?? "",
     });
     limpar();
-    avisar(`Pedido salvo · ${brl(t.cobrado)}`, () => removerPedido(id));
+    avisar(encomenda ? `Encomenda salva pra ${dataBr(hoje)} · ${brl(t.cobrado)}` : `Pedido salvo · ${brl(t.cobrado)}`, () => removerPedido(id));
   };
 
   const grupo = (cat: Categoria) => ativos.filter((p) => p.categoria === cat);
@@ -186,6 +191,26 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
             </button>
           ))}
         </div>
+        )}
+
+        {!o && (
+          <div className="flex flex-col gap-3">
+            <Chips
+              rotulo="Para quando"
+              valor={encomenda ? "encomenda" : "hoje"}
+              onChange={(v) => {
+                setEncomenda(v === "encomenda" ? amanha : "");
+                if (v === "encomenda") setDetalhes(true); // encomenda precisa do nome do cliente
+              }}
+              opcoes={[{ v: "hoje", t: "Venda de hoje" }, { v: "encomenda", t: "Encomenda" }]}
+            />
+            {encomenda !== "" && (
+              <Campo rotulo="Dia da entrega">
+                {(id) => <input id={id} type="date" min={amanha} value={encomenda} onChange={(e) => setEncomenda(e.target.value || amanha)} className={estiloCampo} />}
+              </Campo>
+            )}
+            {dataInvalida && <p className="text-prejuizo">Encomenda é pra amanhã em diante.</p>}
+          </div>
         )}
 
         <section className="flex flex-col gap-3">
@@ -320,7 +345,7 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
               )}
             </p>
           </div>
-          <Botao variante="principal" onClick={salvar} disabled={!nItens} className="min-h-16 px-8 font-display text-2xl">
+          <Botao variante="principal" onClick={salvar} disabled={!nItens || dataInvalida} className="min-h-16 px-8 font-display text-2xl">
             Salvar
           </Botao>
         </div>

@@ -29,6 +29,7 @@ export default function Pedidos() {
   const total = validos.reduce((s, p) => s + calcPedido(p).cobrado, 0);
   const dias = [...new Set(lista.map((p) => p.dia))];
   const sel = pedidos.find((p) => p.id === aberto);
+  const encomendas = pedidos.filter((p) => p.dia > per.hoje && p.status !== "cancelado").sort((a, b) => a.dia.localeCompare(b.dia));
 
   const exportar = () =>
     baixarCsv(
@@ -51,6 +52,21 @@ export default function Pedidos() {
         <button onClick={ativar} className="min-h-12 rounded-[var(--radius-ctl)] bg-prejuizo px-4 text-left font-semibold text-carvao active:scale-[0.98]">
           Som do alarme desligado. Toca aqui pra ativar.
         </button>
+      )}
+      {encomendas.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <Rotulo>Encomendas</Rotulo>
+          <ul className="grid gap-2 lg:grid-cols-2">
+            {encomendas.map((p) => (
+              <li key={p.id} className="flex flex-col gap-1">
+                <span className="text-sm font-semibold capitalize text-milho">
+                  {nomeDia(p.dia)}, {dataBr(p.dia)}
+                </span>
+                <Cartao p={p} onAbrir={() => setAberto(p.id)} />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <FiltroPeriodo p={per} />
       <Chips rotulo="Canal" valor={canal} onChange={setCanal} opcoes={[{ v: "todos", t: "Todos" }, ...CANAIS.map((v) => ({ v, t: CANAL[v].nome }))]} />

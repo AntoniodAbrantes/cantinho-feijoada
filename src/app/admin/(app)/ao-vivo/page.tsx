@@ -10,6 +10,7 @@ import { SONS, useAlarme, type Som } from "@/components/alarme";
 import { BotaoZap, Entrega, zapCliente } from "@/components/entrega";
 import { Texto, Valor } from "@/components/campos";
 import { Folha } from "@/components/folha";
+import { AvisoCelular } from "@/components/aviso-celular";
 import { Botao, Chips, Painel, Vazio } from "@/components/ui";
 
 // Tela pra deixar aberta durante o almoço: pedido do site chega, toca até alguém aceitar ou recusar.
@@ -57,6 +58,10 @@ export default function AoVivo() {
           ))}
         </ul>
       )}
+
+      <Painel>
+        <AvisoCelular />
+      </Painel>
 
       <Painel className="flex flex-col gap-4">
         <h2 className="font-display text-xl uppercase">Som do alarme</h2>

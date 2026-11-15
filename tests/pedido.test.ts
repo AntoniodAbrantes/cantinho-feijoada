@@ -4,6 +4,7 @@ import * as seed from "@/data/seed";
 import type { DadosCliente } from "@/lib/site";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+vi.mock("next/server", () => ({ after: () => {} })); // aviso no celular: fora do teste
 process.env.NEXT_PUBLIC_EMULADOR = "1";
 
 const host = process.env.FIRESTORE_EMULATOR_HOST;

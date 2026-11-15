@@ -31,6 +31,14 @@ function guardar(req, res) {
   return res;
 }
 
+// Pedido novo com o app fechado (Web Push, mandado pela rota de pedido). Mesma tag do alarme: não duplica.
+self.addEventListener("push", (e) => {
+  const a = e.data ? e.data.json() : { titulo: "Pedido novo no site", corpo: "", tag: "pedido" };
+  e.waitUntil(
+    self.registration.showNotification(a.titulo, { body: a.corpo, tag: a.tag, icon: "/marca/icone-192.png", requireInteraction: true, vibrate: [500, 200, 500] }),
+  );
+});
+
 // Toque na notificação de pedido novo: volta pro sistema aberto ou abre a tela ao vivo.
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();

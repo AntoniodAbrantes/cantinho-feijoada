@@ -1,6 +1,9 @@
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { brl } from "@/lib/format";
 import { conferirAppCheck } from "@/lib/servidor/appcheck";
 import { Recusa, criarPedido, lerCorpo } from "@/lib/servidor/pedido";
+import { avisarCelulares } from "@/lib/servidor/push";
 
 export const runtime = "nodejs";
 
@@ -20,6 +23,8 @@ export async function POST(req: Request) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "desconhecido";
     const r = await criarPedido(itens, cliente, ip);
     revalidatePath("/"); // o "esgotou" do site atualiza na hora
+    // Depois da resposta: o cliente não espera o aviso chegar no celular do dono.
+    after(() => avisarCelulares({ titulo: `Pedido novo nº ${r.numero}`, corpo: `${cliente.nome.split(" ")[0]} · ${brl(r.total)}`, tag: r.id }).catch((e) => console.error("push", e)));
     return Response.json({ numero: r.numero, rastreio: r.rastreio });
   } catch (e) {
     if (e instanceof Recusa) {
