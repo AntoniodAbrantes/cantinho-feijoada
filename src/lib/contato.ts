@@ -5,3 +5,6 @@ export const linkInstagram = `https://instagram.com/${INSTAGRAM}`;
 export const linkWhatsapp = (msg?: string) => `https://wa.me/${WHATSAPP}${msg ? `?text=${encodeURIComponent(msg)}` : ""}`;
 // WhatsApp do cliente (número salvo só com DDD, sem o 55).
 export const linkWhatsappCliente = (telefone: string, msg: string) => `https://wa.me/55${telefone}?text=${encodeURIComponent(msg)}`;
+// Avaliação no Google: quem dá 4 ou 5 estrelas no site é convidado a avaliar lá também.
+// shortcut: falta o link do Perfil da Empresa ("Pedir avaliações"); vazio, o botão não aparece.
+export const LINK_AVALIACAO_GOOGLE = "";

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { Selo } from "@/components/ui";
-import { BotaoAbertura, Cardapio, PedidoProvider, StatusLoja, UltimoPedido } from "@/components/site/pedido";
+import { BotaoAbertura, Cardapio, PedirDeNovo, PedidoProvider, StatusLoja, UltimoPedido } from "@/components/site/pedido";
 import { FOTOS } from "@/data/fotos";
 import { INSTAGRAM, WHATSAPP_TEXTO, linkInstagram, linkWhatsapp } from "@/lib/contato";
 import { resumoFaixas } from "@/lib/entrega";
@@ -52,6 +52,7 @@ export default async function Site() {
             </p>
             <StatusLoja />
             <UltimoPedido />
+            <PedirDeNovo />
           </div>
           <div className="flex flex-col gap-6">
             <Foto src={FOTOS.feijoada} alt="Feijoada do Cantinho" />

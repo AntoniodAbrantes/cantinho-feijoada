@@ -1,4 +1,6 @@
 "use client";
+import { IconEstrela } from "@/components/icons";
+import { cx } from "@/components/ui";
 import { linkWhatsappCliente } from "@/lib/contato";
 import { kmTexto, taxaTexto } from "@/lib/entrega";
 import { brl } from "@/lib/format";
@@ -6,6 +8,7 @@ import { NOME_PAGAMENTO, mascaraTelefone } from "@/lib/site";
 import type { Pedido } from "@/lib/types";
 
 const pagamento = NOME_PAGAMENTO as Record<string, string>;
+const rota = "inline-flex min-h-11 items-center rounded-[var(--radius-ctl)] border border-linha px-3 font-semibold text-milho active:bg-tisna";
 
 // Mensagem pronta pro WhatsApp do cliente do site, com o link de acompanhamento (abre em qualquer aparelho).
 export const msgCliente = (p: Pedido, resto = "") =>
@@ -33,11 +36,27 @@ export function Entrega({ p }: { p: Pedido }) {
       )}
       {e?.referencia && <p className="text-creme-2">Referência: {e.referencia}</p>}
       {p.local && (
-        <p className="flex flex-wrap items-baseline gap-x-3">
-          {p.distanciaKm !== undefined && <span className="num">{kmTexto(p.distanciaKm)} da cozinha · entrega {taxaTexto(p.taxaEntrega)}</span>}
-          <a href={`https://www.google.com/maps/search/?api=1&query=${p.local.lat},${p.local.lng}`} target="_blank" rel="noopener" className="font-semibold text-milho underline underline-offset-4">
-            Ver no mapa
-          </a>
+        <>
+          {p.distanciaKm !== undefined && <p className="num">{kmTexto(p.distanciaKm)} da cozinha · entrega {taxaTexto(p.taxaEntrega)}</p>}
+          {/* Rota pro entregador, direto no pino que o cliente marcou. */}
+          <p className="flex flex-wrap gap-2">
+            <a href={`https://www.google.com/maps/dir/?api=1&destination=${p.local.lat},${p.local.lng}&travelmode=driving`} target="_blank" rel="noopener" className={rota}>
+              Rota no Google Maps
+            </a>
+            <a href={`https://waze.com/ul?ll=${p.local.lat},${p.local.lng}&navigate=yes`} target="_blank" rel="noopener" className={rota}>
+              Rota no Waze
+            </a>
+          </p>
+        </>
+      )}
+      {p.avaliacao && (
+        <p>
+          <span className="inline-flex align-[-2px]" role="img" aria-label={`Nota ${p.avaliacao.nota} de 5`}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <IconEstrela key={n} className={cx("size-4", n <= p.avaliacao!.nota ? "text-milho" : "text-linha")} />
+            ))}
+          </span>
+          {p.avaliacao.comentario && <span className="text-creme-2"> · “{p.avaliacao.comentario}”</span>}
         </p>
       )}
       <p className="text-creme-2">

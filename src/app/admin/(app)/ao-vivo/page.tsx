@@ -75,17 +75,22 @@ export default function AoVivo() {
   );
 }
 
+// Quanto falta pro pedido chegar no cliente, escolhido no aceite. Vira "chega por volta de 12:40" pra ele.
+const PRAZOS = ["30", "45", "60", "75"] as const;
+type Prazo = (typeof PRAZOS)[number];
+
 function CartaoNovo({ p }: { p: Pedido }) {
   const { mudarStatus, avisar } = useStore();
   const [taxa, setTaxa] = useState(p.taxaEntrega);
   const [recusar, setRecusar] = useState(false);
   const [motivo, setMotivo] = useState("");
+  const [prazo, setPrazo] = useState<Prazo>("45");
   const total = calcPedido({ ...p, taxaEntrega: taxa }).cobrado;
   const novaTaxa = taxa !== p.taxaEntrega ? { taxaEntrega: taxa } : undefined;
 
   const aceitar = () => {
-    mudarStatus(p, "feito", novaTaxa);
-    avisar(`Pedido nº ${p.numero} aceito.`, () => mudarStatus({ ...p, ...novaTaxa, status: "feito" }, "novo", novaTaxa && { taxaEntrega: p.taxaEntrega }));
+    mudarStatus(p, "feito", { ...novaTaxa, previsaoEm: Date.now() + Number(prazo) * 60_000 });
+    avisar(`Pedido nº ${p.numero} aceito. Chega em ${prazo} min.`, () => mudarStatus({ ...p, ...novaTaxa, status: "feito" }, "novo", novaTaxa && { taxaEntrega: p.taxaEntrega }));
   };
   const confirmarRecusa = () => {
     const m = motivo.trim();
@@ -118,12 +123,16 @@ function CartaoNovo({ p }: { p: Pedido }) {
       {p.obs && <p className="rounded-[var(--radius-ctl)] bg-tisna p-3">Recado: {p.obs}</p>}
       <div className="flex flex-col gap-1">
         <Valor rotulo="Taxa de entrega" valor={taxa} onChange={setTaxa} />
-        <p className="text-sm text-creme-3">Mais longe que 4 km: combina no WhatsApp e muda aqui antes de aceitar.</p>
+        <p className="text-sm text-creme-3">A taxa já vem calculada pela distância. Se combinar outra no WhatsApp, muda aqui antes de aceitar.</p>
       </div>
       <p className="flex items-baseline justify-between">
         <span className="text-creme-2">Total</span>
         <span className="num font-display text-3xl">{brl(total)}</span>
       </p>
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-semibold uppercase tracking-wider text-creme-3">Chega na casa do cliente em</span>
+        <Chips rotulo="Chega na casa do cliente em" valor={prazo} onChange={setPrazo} opcoes={PRAZOS.map((v) => ({ v, t: `${v} min` }))} />
+      </div>
       <Botao variante="principal" onClick={aceitar} className="min-h-16 text-2xl">
         Aceitar
       </Botao>

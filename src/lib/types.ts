@@ -131,7 +131,16 @@ export interface Pedido extends PedidoBase {
   trocoPara?: number;
   rastreio?: string; // id de rastreio/{token}: o que o cliente vê
   aceitoEm?: number;
+  previsaoEm?: number; // hora prevista de chegada, escolhida no aceite
+  avaliacao?: Avaliacao;
   motivoRecusa?: string;
+}
+
+// Nota do cliente do site depois da entrega.
+export interface Avaliacao {
+  nota: number; // 1 a 5
+  comentario: string;
+  em: number;
 }
 
 export interface Endereco {

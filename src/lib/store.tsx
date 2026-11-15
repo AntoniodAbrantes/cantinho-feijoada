@@ -11,7 +11,7 @@ export type Op = { caminho: string; dados?: object; apagar?: boolean };
 export const novoId = (colecao: string) => doc(collection(fb().db, colecao)).id;
 
 // Recusa com motivo e taxa de entrega ajustada no aceite (pedido do site mais longe que 4 km).
-export type Extra = Partial<Pick<Pedido, "taxaEntrega" | "motivoRecusa">>;
+export type Extra = Partial<Pick<Pedido, "taxaEntrega" | "motivoRecusa" | "previsaoEm">>;
 
 // O que dá pra mudar num pedido já lançado (data, canal, status e dados do site ficam).
 export type Edicao = Pick<Pedido, "itens" | "desconto" | "taxaEntrega" | "custoEntrega" | "pagamento" | "taxas" | "cliente" | "bairro" | "obs">;
@@ -144,7 +144,7 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
       const b = writeBatch(db);
       b.update(doc(db, "pedidos", p.id), { status, ...extra, ...(p.status === "novo" && status === "feito" && { aceitoEm: Date.now() }) });
       const taxa = extra.taxaEntrega !== undefined && { taxaEntrega: extra.taxaEntrega, total: calcPedido({ ...p, ...extra }).cobrado };
-      if (p.rastreio) b.update(doc(db, "rastreio", p.rastreio), { status, ...(extra.motivoRecusa !== undefined && { motivoRecusa: extra.motivoRecusa }), ...taxa });
+      if (p.rastreio) b.update(doc(db, "rastreio", p.rastreio), { status, ...(extra.motivoRecusa !== undefined && { motivoRecusa: extra.motivoRecusa }), ...(extra.previsaoEm !== undefined && { previsaoEm: extra.previsaoEm }), ...taxa });
       if (conta(p.status) && !conta(status)) estoqueNoLote(b, p.itens, 1);
       if (!conta(p.status) && conta(status)) estoqueNoLote(b, p.itens, -1);
       commit(b);

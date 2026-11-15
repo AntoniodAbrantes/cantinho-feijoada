@@ -5,10 +5,12 @@ import { getApps, initializeApp } from "firebase/app";
 import { connectFirestoreEmulator, doc, getFirestore, onSnapshot } from "firebase/firestore";
 import { Selo, cx } from "@/components/ui";
 import { config, emulador } from "@/lib/firebase-config";
-import { linkWhatsapp } from "@/lib/contato";
-import { brl } from "@/lib/format";
+import { LINK_AVALIACAO_GOOGLE, linkWhatsapp } from "@/lib/contato";
+import { taxaTexto } from "@/lib/entrega";
+import { brl, horaLocal } from "@/lib/format";
 import { NOME_PAGAMENTO, type PagamentoSite } from "@/lib/site";
 import type { StatusPedido } from "@/lib/types";
+import { IconEstrela } from "@/components/icons";
 import { botaoPrincipal } from "./estilo";
 
 // O que a rota de pedido grava em rastreio/{token}: sem telefone, endereço nem custo.
@@ -23,6 +25,8 @@ interface Rastreio {
   pagamento: PagamentoSite;
   trocoPara: number;
   motivoRecusa?: string;
+  previsaoEm?: number;
+  avaliacao?: { nota: number };
 }
 
 // App "site" separado do sistema: sem login e sem cache offline.
@@ -91,6 +95,12 @@ export function Acompanhar({ token }: { token: string }) {
               {FRASE[r.status]}
             </p>
             {r.status === "cancelado" && r.motivoRecusa && <p className="text-xl text-creme-2">Motivo: {r.motivoRecusa}</p>}
+            {(r.status === "feito" || r.status === "saiu") && r.previsaoEm && (
+              <p className="mt-1 flex items-baseline gap-2 rounded-[var(--radius-card)] bg-brasa px-4 py-3">
+                <span className="text-lg text-creme-2">Chega por volta de</span>
+                <span className="num font-display text-4xl text-milho">{horaLocal(r.previsaoEm)}</span>
+              </p>
+            )}
           </section>
 
           {r.status !== "cancelado" && (
@@ -104,6 +114,8 @@ export function Acompanhar({ token }: { token: string }) {
             </ol>
           )}
 
+          {r.status === "entregue" && <Avaliar token={token} feita={r.avaliacao?.nota} />}
+
           <section className="flex flex-col gap-2 rounded-[var(--radius-card)] bg-brasa p-4">
             {r.itens.map((i) => (
               <p key={i.nome} className="flex justify-between gap-3 text-lg">
@@ -115,7 +127,7 @@ export function Acompanhar({ token }: { token: string }) {
             ))}
             <p className="flex justify-between gap-3 text-lg text-creme-2">
               <span>Entrega</span>
-              <span className="num">{brl(r.taxaEntrega)}</span>
+              <span className="num">{taxaTexto(r.taxaEntrega)}</span>
             </p>
             <p className="mt-1 flex items-baseline justify-between gap-3 border-t border-linha pt-3">
               <span className="text-lg">Total</span>
@@ -141,5 +153,70 @@ export function Acompanhar({ token }: { token: string }) {
         Voltar pro cardápio
       </Link>
     </main>
+  );
+}
+
+// Depois da entrega: estrelas e um recado. Nota alta ganha o convite pro Google; baixa fica só com a gente.
+function Avaliar({ token, feita }: { token: string; feita?: number }) {
+  const [nota, setNota] = useState(0);
+  const [comentario, setComentario] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [enviada, setEnviada] = useState(0);
+  const final = feita ?? enviada;
+
+  const enviar = async () => {
+    setEnviando(true);
+    setErro("");
+    try {
+      const r = await fetch("/api/avaliacao", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, nota, comentario }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.erro ?? "Não consegui mandar agora.");
+      setEnviada(nota);
+    } catch (e) {
+      setErro(navigator.onLine ? (e as Error).message : "Tô sem internet aqui. Tenta de novo daqui a pouco.");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  if (final)
+    return (
+      <section className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-linha p-4">
+        <p className="text-xl">{final >= 4 ? "Valeu demais pela nota! 🧡" : "Valeu por contar. A gente vai melhorar."}</p>
+        {final >= 4 && LINK_AVALIACAO_GOOGLE && (
+          <>
+            <p className="text-creme-2">Ajuda o Cantinho deixando essa nota no Google também? Leva um minuto.</p>
+            <a href={LINK_AVALIACAO_GOOGLE} target="_blank" rel="noopener" className={cx(botaoPrincipal, "w-full")}>
+              Avaliar no Google
+            </a>
+          </>
+        )}
+      </section>
+    );
+
+  return (
+    <section className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-milho p-4">
+      <h2 className="font-display text-2xl uppercase">Como tava a feijoada?</h2>
+      <div role="radiogroup" aria-label="Nota de 1 a 5" className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} role="radio" aria-checked={nota === n} aria-label={`${n} ${n === 1 ? "estrela" : "estrelas"}`} onClick={() => setNota(n)} className={cx("grid size-12 place-items-center transition active:scale-90", n <= nota ? "text-milho" : "text-linha")}>
+            <IconEstrela className="size-10" />
+          </button>
+        ))}
+      </div>
+      {nota > 0 && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-semibold uppercase tracking-wider text-creme-3">Quer contar mais? (opcional)</span>
+            <textarea value={comentario} onChange={(e) => setComentario(e.target.value)} maxLength={300} rows={3} className="rounded-[var(--radius-ctl)] border border-linha bg-carvao px-3 py-2 text-lg text-creme focus:border-milho focus:outline-none" />
+          </label>
+          <button onClick={enviar} disabled={enviando} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
+            {enviando ? "Enviando…" : "Mandar avaliação"}
+          </button>
+        </>
+      )}
+      {erro && <p role="alert" className="font-semibold text-prejuizo">{erro}</p>}
+    </section>
   );
 }

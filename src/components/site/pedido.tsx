@@ -21,7 +21,8 @@ import type { Endereco } from "@/lib/types";
 // Guardado no aparelho do cliente: o carrinho e os dados para o próximo pedido.
 const K_CARRINHO = "cantinho:carrinho";
 const K_CLIENTE = "cantinho:cliente";
-export const K_PEDIDOS = "cantinho:pedidos"; // pedidos feitos neste aparelho, para achar o acompanhamento de novo
+export const K_PEDIDOS = "cantinho:pedidos";
+const K_ULTIMO = "cantinho:ultimo"; // itens do último pedido enviado, pro "pedir de novo" // pedidos feitos neste aparelho, para achar o acompanhamento de novo
 function ler<T>(k: string): T | null {
   try {
     const v = localStorage.getItem(k);
@@ -45,6 +46,7 @@ interface Ctx {
   limpar: () => void;
   pode: (id: string) => boolean;
   abrir: () => void;
+  repetir: (itens: Carrinho) => void;
 }
 const C = createContext<Ctx | null>(null);
 const usePedido = () => useContext(C)!;
@@ -81,8 +83,20 @@ export function PedidoProvider({ dados, children }: { dados: DadosSite | null; c
   };
   const pode = (id: string) => !!dados && erroCarrinho({ ...qtd, [id]: (qtd[id] ?? 0) + 1 }, dados.itens, dados.restaG) === null;
 
+  // Pedir de novo: só o que ainda tem. Com os dados de entrega salvos e completos, vai direto pra revisão.
+  const repetir = (itens: Carrinho) => {
+    if (!dados) return;
+    const valido = Object.fromEntries(Object.entries(itens).filter(([id, q]) => q > 0 && dados.itens.some((i) => i.id === id && !i.esgotado)));
+    setQtd(valido);
+    gravar(K_CARRINHO, valido);
+    const salvo = { ...clienteVazio, ...ler<Partial<DadosCliente>>(K_CLIENTE), trocoPara: 0, obs: "" };
+    const completo = !Object.keys(errosCliente(salvo, 0)).length && (!dados.entrega.ativo || !!salvo.local);
+    const tudo = Object.keys(valido).length === Object.keys(itens).filter((id) => itens[id] > 0).length;
+    setEtapa(!tudo || erroCarrinho(valido, dados.itens, dados.restaG) ? "carrinho" : completo ? "revisao" : "dados");
+  };
+
   return (
-    <C.Provider value={{ dados, aberta, qtd, mudar, limpar, pode, abrir: () => setEtapa("carrinho") }}>
+    <C.Provider value={{ dados, aberta, qtd, mudar, limpar, pode, abrir: () => setEtapa("carrinho"), repetir }}>
       {children}
       <BarraPedido />
       {etapa && dados && <Checkout etapa={etapa} setEtapa={setEtapa} dados={dados} />}
@@ -113,6 +127,24 @@ export function UltimoPedido() {
       Acompanhar seu pedido nº {p.numero}
       <IconSeta className="size-5" />
     </a>
+  );
+}
+
+// Último pedido feito neste aparelho: um toque e vai pra revisão com os mesmos itens.
+export function PedirDeNovo() {
+  const { dados, aberta, repetir } = usePedido();
+  const [u, setU] = useState<Carrinho | null>(null);
+  useEffect(() => setU(ler<Carrinho>(K_ULTIMO)), []);
+  const itens = u && dados ? dados.itens.filter((i) => u[i.id] > 0 && !i.esgotado) : [];
+  if (!u || !aberta || !itens.length) return null;
+  return (
+    <button onClick={() => repetir(u)} className="flex min-h-14 w-full items-center justify-between gap-3 rounded-[var(--radius-ctl)] bg-brasa px-4 py-3 text-left active:bg-tisna">
+      <span>
+        <span className="block text-sm font-semibold uppercase tracking-[0.14em] text-milho">Pedir de novo</span>
+        <span className="block text-lg leading-snug">{itens.map((i) => `${u[i.id]}× ${i.nome}`).join(", ")}</span>
+      </span>
+      <IconSeta className="size-5 shrink-0 text-milho" />
+    </button>
   );
 }
 
@@ -321,6 +353,7 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.erro ?? "Não consegui enviar agora.");
       gravar(K_PEDIDOS, [{ numero: j.numero, rastreio: j.rastreio, em: Date.now() }, ...(ler<object[]>(K_PEDIDOS) ?? [])].slice(0, 10));
+      gravar(K_ULTIMO, qtd);
       limpar();
       window.location.href = `/pedido/${j.rastreio}`;
     } catch (e) {

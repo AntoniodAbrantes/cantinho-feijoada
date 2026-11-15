@@ -199,4 +199,23 @@ describe("App Check em produção", () => {
     const r = await pedir({ itens: { "feijoada-2": 1 }, cliente: { ...cliente, local: { lat: "-7.1", lng: -34.8 } } });
     expect(r.status).toBe(400);
   });
+
+  it("avaliação: só depois de entregue, uma vez, e grava no pedido", async () => {
+    const { POST: avaliar } = await import("@/app/api/avaliacao/route");
+    const nota = (corpo: unknown) => avaliar(new Request("http://localhost/api/avaliacao", { method: "POST", body: JSON.stringify(corpo) }));
+    const j = await (await pedir({ itens: { "feijoada-2": 1 }, cliente })).json();
+    expect((await nota({ token: j.rastreio, nota: 5 })).status).toBe(409); // ainda não chegou
+
+    const [ref] = (await db.collection("pedidos").get()).docs.map((d) => d.ref);
+    await ref.update({ status: "entregue" });
+    await db.doc(`rastreio/${j.rastreio}`).update({ status: "entregue" });
+    expect((await nota({ token: j.rastreio, nota: 6 })).status).toBe(400);
+    expect((await nota({ token: j.rastreio, nota: 4, comentario: "x".repeat(301) })).status).toBe(400);
+    expect((await nota({ token: "x".repeat(32), nota: 5 })).status).toBe(404);
+
+    expect((await nota({ token: j.rastreio, nota: 4, comentario: " Muito boa! " })).status).toBe(200);
+    expect((await ref.get()).get("avaliacao")).toMatchObject({ nota: 4, comentario: "Muito boa!" });
+    expect((await db.doc(`rastreio/${j.rastreio}`).get()).get("avaliacao")).toEqual({ nota: 4 }); // o comentário fica só com o dono
+    expect((await nota({ token: j.rastreio, nota: 1 })).status).toBe(409); // uma vez só
+  });
 });

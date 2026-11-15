@@ -15,3 +15,9 @@ export const IconFechar = (p: P) => <S {...p}><path d="M6 6l12 12M18 6L6 18" /><
 export const IconMenos = (p: P) => <S {...p}><path d="M5 12h14" /></S>;
 export const IconSeta = (p: P) => <S {...p}><path d="M9 6l6 6-6 6" /></S>;
 export const IconOffline = (p: P) => <S {...p}><path d="M2 2l20 20M8.5 16.5a5 5 0 017 0M5 12.9a10 10 0 015.2-2.8M19 12.9a10 10 0 00-2.4-1.7M2 8.8a15 15 0 014.2-2.6M22 8.8A15 15 0 0010.7 5M12 20h.01" /></S>;
+// Estrela cheia (a cor vem do texto): o caractere ★ cai numa fonte do sistema que ignora a cor.
+export const IconEstrela = ({ className = "size-6" }: P) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+    <path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" />
+  </svg>
+);
