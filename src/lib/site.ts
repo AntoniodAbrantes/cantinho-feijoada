@@ -1,5 +1,6 @@
 // Regras do pedido pelo site. As mesmas funções rodam no navegador (para avisar cedo) e na rota do pedido (que decide).
 import { baixaEstoque } from "./calc";
+import type { EntregaSite, Ponto } from "./entrega";
 import type { Categoria, Endereco, FormaPagamento, Loja, Pedido, Produto } from "./types";
 
 // shortcut: limites propostos no plano, ainda a confirmar com o Antonio.
@@ -19,7 +20,8 @@ export interface ItemSite {
 export interface DadosSite {
   itens: ItemSite[];
   restaG: number; // feijoada que ainda sai da panela do fim de semana
-  taxaEntrega: number;
+  taxaEntrega: number; // fixa, das premissas: vale quando entrega.ativo é false
+  entrega: EntregaSite;
   loja: Loja;
   aberta: boolean;
 }
@@ -77,11 +79,12 @@ export interface DadosCliente {
   nome: string;
   telefone: string; // só dígitos, com DDD
   endereco: Endereco;
+  local?: Ponto; // pino no mapa (quando a taxa é por distância)
   pagamento: PagamentoSite;
   trocoPara: number; // 0 = sem troco
   obs: string;
 }
-export type CampoCliente = "nome" | "telefone" | "rua" | "numero" | "bairro" | "complemento" | "referencia" | "pagamento" | "trocoPara" | "obs";
+export type CampoCliente = "nome" | "telefone" | "rua" | "numero" | "bairro" | "complemento" | "referencia" | "cep" | "cidade" | "pagamento" | "trocoPara" | "obs";
 
 const texto = (v: unknown, max: number) => typeof v === "string" && v.trim().length <= max;
 
@@ -96,6 +99,8 @@ export function errosCliente(d: DadosCliente, total: number): Partial<Record<Cam
   if (!texto(e2.bairro, 60) || !e2.bairro.trim()) e.bairro = "Falta o bairro.";
   if (!texto(e2.complemento, 60)) e.complemento = "Complemento muito longo.";
   if (!texto(e2.referencia, 100)) e.referencia = "Referência muito longa.";
+  if (e2.cep !== undefined && e2.cep !== "" && !/^\d{8}$/.test(e2.cep)) e.cep = "CEP tem 8 números.";
+  if (e2.cidade !== undefined && !texto(e2.cidade, 40)) e.cidade = "Cidade muito longa.";
   if (!["pix", "dinheiro", "debito", "credito"].includes(d.pagamento)) e.pagamento = "Escolhe como vai pagar.";
   if (d.pagamento === "dinheiro" && d.trocoPara && (!Number.isInteger(d.trocoPara) || d.trocoPara < total || d.trocoPara > 100000))
     e.trocoPara = "O troco tem que ser pra um valor maior que o total.";

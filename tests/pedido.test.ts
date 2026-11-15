@@ -171,4 +171,32 @@ describe("App Check em produção", () => {
       delete process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
     }
   });
+
+  it("taxa por distância: o servidor calcula pelo pino e ignora a taxa que vem do navegador", async () => {
+    const { ENTREGA } = await import("@/data/entrega");
+    const config = { ...ENTREGA, origem: { lat: -7.1, lng: -34.84 }, faixas: [{ ateKm: 3, taxa: 0 }, { ateKm: 6, taxa: 800 }] };
+    const rota = vi.fn().mockResolvedValue(4.26);
+    const local = { lat: -7.13, lng: -34.85 };
+    const malandro = { ...cliente, local, taxaEntrega: 0, distanciaKm: 1 } as DadosCliente;
+    const r = await criarPedido({ "feijoada-2": 1 }, malandro, "2.2.2.2", Date.now(), config, rota);
+    const [p] = await pedidosSalvos();
+    expect(p).toMatchObject({ taxaEntrega: 800, distanciaKm: 4.3, local });
+    expect((await db.doc(`rastreio/${r.rastreio}`).get()).data()).toMatchObject({ taxaEntrega: 800, total: 7490 + 800 });
+    expect((await db.doc(`rastreio/${r.rastreio}`).get()).data()).not.toHaveProperty("local");
+  });
+
+  it("taxa por distância: sem pino ou fora da área não grava", async () => {
+    const { ENTREGA } = await import("@/data/entrega");
+    const config = { ...ENTREGA, origem: { lat: -7.1, lng: -34.84 }, faixas: [{ ateKm: 3, taxa: 0 }] };
+    const longe = vi.fn().mockResolvedValue(12);
+    await expect(criarPedido({ "feijoada-2": 1 }, cliente, "3.3.3.3", Date.now(), config, longe)).rejects.toThrow(/mapa/);
+    await expect(criarPedido({ "feijoada-2": 1 }, { ...cliente, local: { lat: -7.2, lng: -34.86 } }, "3.3.3.3", Date.now(), config, longe)).rejects.toThrow(/fora da nossa área/);
+    await expect(criarPedido({ "feijoada-2": 1 }, { ...cliente, local: { lat: -8.05, lng: -34.88 } }, "3.3.3.3", Date.now(), config, longe)).rejects.toThrow(/fora da nossa área/);
+    expect(await pedidosSalvos()).toHaveLength(0);
+  });
+
+  it("local em formato errado é recusado", async () => {
+    const r = await pedir({ itens: { "feijoada-2": 1 }, cliente: { ...cliente, local: { lat: "-7.1", lng: -34.8 } } });
+    expect(r.status).toBe(400);
+  });
 });

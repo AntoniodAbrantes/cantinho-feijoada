@@ -126,6 +126,8 @@ export interface Pedido extends PedidoBase {
   numero?: number; // sequencial, para falar com o cliente
   telefone?: string; // só dígitos, com DDD
   endereco?: Endereco;
+  local?: { lat: number; lng: number }; // pino do cliente no mapa
+  distanciaKm?: number; // rota de carro da cozinha até o pino (ou linha reta × 1,3)
   trocoPara?: number;
   rastreio?: string; // id de rastreio/{token}: o que o cliente vê
   aceitoEm?: number;
@@ -138,6 +140,8 @@ export interface Endereco {
   bairro: string;
   complemento: string;
   referencia: string;
+  cep?: string; // só dígitos
+  cidade?: string;
 }
 
 // config/loja. Horário "hh:mm" no fuso de Fortaleza; dia sem horário = fechado.

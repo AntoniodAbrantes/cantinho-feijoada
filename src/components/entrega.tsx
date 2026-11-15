@@ -1,5 +1,6 @@
 "use client";
 import { linkWhatsappCliente } from "@/lib/contato";
+import { kmTexto, taxaTexto } from "@/lib/entrega";
 import { brl } from "@/lib/format";
 import { NOME_PAGAMENTO, mascaraTelefone } from "@/lib/site";
 import type { Pedido } from "@/lib/types";
@@ -26,9 +27,19 @@ export function Entrega({ p }: { p: Pedido }) {
         <p>
           {e.rua}, {e.numero} · {e.bairro}
           {e.complemento && ` · ${e.complemento}`}
+          {e.cidade && ` · ${e.cidade}`}
+          {e.cep && <span className="num text-creme-2"> · CEP {e.cep.replace(/(\d{5})(\d{3})/, "$1-$2")}</span>}
         </p>
       )}
       {e?.referencia && <p className="text-creme-2">Referência: {e.referencia}</p>}
+      {p.local && (
+        <p className="flex flex-wrap items-baseline gap-x-3">
+          {p.distanciaKm !== undefined && <span className="num">{kmTexto(p.distanciaKm)} da cozinha · entrega {taxaTexto(p.taxaEntrega)}</span>}
+          <a href={`https://www.google.com/maps/search/?api=1&query=${p.local.lat},${p.local.lng}`} target="_blank" rel="noopener" className="font-semibold text-milho underline underline-offset-4">
+            Ver no mapa
+          </a>
+        </p>
+      )}
       <p className="text-creme-2">
         {pagamento[p.pagamento]} na entrega{p.trocoPara ? ` · troco pra ${brl(p.trocoPara)}` : ""}
       </p>

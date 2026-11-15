@@ -3,6 +3,7 @@ import { Selo } from "@/components/ui";
 import { BotaoAbertura, Cardapio, PedidoProvider, StatusLoja, UltimoPedido } from "@/components/site/pedido";
 import { FOTOS } from "@/data/fotos";
 import { INSTAGRAM, WHATSAPP_TEXTO, linkInstagram, linkWhatsapp } from "@/lib/contato";
+import { resumoFaixas } from "@/lib/entrega";
 import { brl } from "@/lib/format";
 import { DIAS_LOJA, NOME_DIA } from "@/lib/loja";
 import { carregarSite } from "@/lib/servidor/cardapio";
@@ -107,7 +108,9 @@ export default async function Site() {
                 {horarios.length > 0 && <span className="mt-1 block text-creme-3">{horarios.join(" · ")}.</span>}
               </Passo>
               <Passo n={2} titulo="Entrega">
-                {dados ? `${dados.taxaEntrega ? brl(dados.taxaEntrega) : "Grátis"} até 4 km` : "Até 4 km"}, em João Pessoa. Mais longe, a gente confirma o valor pelo WhatsApp antes de sair.
+                {dados?.entrega.ativo
+                  ? `${resumoFaixas(dados.entrega.faixas)}, em João Pessoa e região. A taxa sai certinha pelo seu endereço, no mapa.`
+                  : `${dados ? `${dados.taxaEntrega ? brl(dados.taxaEntrega) : "Grátis"} até 4 km` : "Até 4 km"}, em João Pessoa. Mais longe, a gente confirma o valor pelo WhatsApp antes de sair.`}
               </Passo>
               <Passo n={3} titulo="Pagamento">
                 Na entrega: Pix, dinheiro, débito ou crédito.

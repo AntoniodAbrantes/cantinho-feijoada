@@ -2,10 +2,13 @@
 // são conferidos aqui, numa transação, a partir do que está no sistema.
 import { createHash, randomBytes } from "node:crypto";
 import { adminDb } from "./admin";
+import { ENTREGA } from "@/data/entrega";
+import { calcularEntrega, rotaOsrm, type Config, type Rota } from "./entrega";
 import { calcPedido, itemDoProduto } from "../calc";
 import { diaLocal, fimDeSemana } from "../format";
 import { lojaAberta } from "../loja";
 import { panela, taxasDoMomento } from "../pedido";
+import type { Ponto } from "../entrega";
 import { cardapioSite, erroCarrinho, errosCliente, type Carrinho, type DadosCliente } from "../site";
 import type { Loja, Pedido, Premissas, Producao, Produto } from "../types";
 
@@ -32,6 +35,9 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
   const e = (c.endereco ?? {}) as Record<string, unknown>;
   const campos = [c.nome, c.telefone, c.pagamento, c.obs, e.rua, e.numero, e.bairro, e.complemento, e.referencia];
   if (campos.some((v) => !ehTexto(v, 400)) || typeof c.trocoPara !== "number") throw invalido;
+  if ([e.cep, e.cidade].some((v) => v !== undefined && !ehTexto(v, 400))) throw invalido;
+  const l = c.local as Record<string, unknown> | undefined;
+  if (l !== undefined && (typeof l !== "object" || l === null || typeof l.lat !== "number" || typeof l.lng !== "number")) throw invalido;
   const t = (v: unknown) => (v as string).trim();
   return {
     itens: Object.fromEntries(pares) as Carrinho,
@@ -41,7 +47,12 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
       pagamento: c.pagamento as DadosCliente["pagamento"],
       trocoPara: c.trocoPara,
       obs: t(c.obs),
-      endereco: { rua: t(e.rua), numero: t(e.numero), bairro: t(e.bairro), complemento: t(e.complemento), referencia: t(e.referencia) },
+      endereco: {
+        rua: t(e.rua), numero: t(e.numero), bairro: t(e.bairro), complemento: t(e.complemento), referencia: t(e.referencia),
+        ...(e.cep !== undefined && { cep: t(e.cep) }),
+        ...(e.cidade !== undefined && { cidade: t(e.cidade) }),
+      },
+      ...(l && { local: { lat: l.lat as number, lng: l.lng as number } }),
     },
   };
 }
@@ -49,7 +60,17 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
 const hash = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 32);
 const lista = <T>(s: FirebaseFirestore.QuerySnapshot) => s.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
 
-export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: string, agora = Date.now()) {
+// Taxa por distância: calculada aqui, antes da transação (chama o OSRM). Fora da área não grava.
+export const FORA_DA_AREA = "Esse endereço fica fora da nossa área de entrega. Combina com a gente pelo WhatsApp.";
+async function entregaDoPedido(local: Ponto | undefined, config: Config, rota: Rota) {
+  if (!config.origem) return null; // sem origem: taxa fixa das premissas
+  if (!local) throw new Recusa(400, "Marca no mapa onde é a entrega.");
+  const c = (await calcularEntrega(local, config, rota))!;
+  if (c.taxa === null) throw new Recusa(409, FORA_DA_AREA);
+  return { km: c.km, taxa: c.taxa };
+}
+
+export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: string, agora = Date.now(), config: Config = ENTREGA, rota: Rota = rotaOsrm) {
   const db = adminDb();
   const dia = diaLocal(agora);
   const fds = fimDeSemana(dia);
@@ -57,6 +78,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
   const limTel = db.doc(`limites/tel-${hash(cliente.telefone)}`);
   const limIp = db.doc(`limites/ip-${hash(ip)}`);
   const contador = db.doc("config/contador");
+  const entrega = await entregaDoPedido(cliente.local, config, rota);
 
   return db.runTransaction(async (t) => {
     const [lojaS, premS, prodS, producoesS, pedidosS, telS, ipS, contS] = await Promise.all([
@@ -95,7 +117,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       canal: "site" as const,
       itens: linhas,
       desconto: { tipo: "valor" as const, informado: 0, motivo: "" },
-      taxaEntrega: prem.taxaEntrega.valor,
+      taxaEntrega: entrega ? entrega.taxa : prem.taxaEntrega.valor,
       custoEntrega: prem.custoEntrega.valor,
       pagamento: cliente.pagamento,
       taxas: taxasDoMomento("site", cliente.pagamento, prem),
@@ -122,6 +144,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       numero,
       telefone: cliente.telefone,
       endereco: cliente.endereco,
+      ...(entrega && { local: cliente.local, distanciaKm: entrega.km }),
       trocoPara,
       rastreio,
     };

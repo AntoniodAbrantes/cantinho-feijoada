@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Botao, Chips, cx } from "@/components/ui";
 import { Campo, Valor, estiloCampo } from "@/components/campos";
 import { IconFechar, IconMais, IconMenos, IconSeta } from "@/components/icons";
@@ -14,6 +14,9 @@ import {
   type Carrinho, type CampoCliente, type DadosCliente, type DadosSite, type ItemSite,
 } from "@/lib/site";
 import { botaoPrincipal } from "./estilo";
+import { EnderecoEntrega, useTaxa, type Taxa } from "./endereco";
+import { resumoFaixas, taxaTexto, type Ponto } from "@/lib/entrega";
+import type { Endereco } from "@/lib/types";
 
 // Guardado no aparelho do cliente: o carrinho e os dados para o próximo pedido.
 const K_CARRINHO = "cantinho:carrinho";
@@ -268,7 +271,12 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
   const [erro, setErro] = useState("");
 
   const sub = subtotal(qtd, dados.itens);
-  const total = sub + dados.taxaEntrega;
+  const ativo = dados.entrega.ativo; // taxa por distância (com mapa) ou fixa
+  const taxa = useTaxa(cliente.local, ativo);
+  const total = sub + (ativo ? (taxa.estado === "ok" ? taxa.taxa : 0) : dados.taxaEntrega);
+  const erroEntrega = !ativo || taxa.estado === "ok" ? "" : MSG_ENTREGA[taxa.estado] ?? (taxa.estado === "erro" ? taxa.msg : "");
+  const setLocal = useCallback((local?: Ponto) => setCliente((c) => ({ ...c, local })), []);
+  const preencher = useCallback((campos: Partial<Endereco>, local?: Ponto) => setCliente((c) => ({ ...c, endereco: { ...c.endereco, ...campos }, ...(local && { local }) })), []);
   const erroItens = erroCarrinho(qtd, dados.itens, dados.restaG);
   const erros = errosCliente(cliente, total);
   const passo = ORDEM.indexOf(etapa);
@@ -292,8 +300,8 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
   const seguir = () => {
     if (etapa === "carrinho") return setEtapa("dados");
     setTentou(true);
-    if (Object.keys(erros).length) return;
-    gravar(K_CLIENTE, { nome: cliente.nome, telefone: cliente.telefone, endereco: cliente.endereco, pagamento: cliente.pagamento }); // troco e recado valem só pra este pedido
+    if (Object.keys(erros).length || erroEntrega) return;
+    gravar(K_CLIENTE, { nome: cliente.nome, telefone: cliente.telefone, endereco: cliente.endereco, local: cliente.local, pagamento: cliente.pagamento }); // troco e recado valem só pra este pedido
     setEtapa("revisao");
   };
   const enviar = async () => {
@@ -339,16 +347,32 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
 
         <div className="flex flex-1 flex-col gap-6 pb-6">
           {etapa === "carrinho" && <EtapaCarrinho dados={dados} />}
-          {etapa === "dados" && <EtapaDados cliente={cliente} setCliente={setCliente} erros={tentou ? erros : {}} total={total} />}
+          {etapa === "dados" && (
+            <EtapaDados cliente={cliente} setCliente={setCliente} erros={tentou ? erros : {}} total={total}>
+              {ativo && (
+                <EnderecoEntrega
+                  e={dados.entrega}
+                  end={cliente.endereco}
+                  local={cliente.local}
+                  setLocal={setLocal}
+                  preencher={preencher}
+                  erros={tentou ? erros : {}}
+                  taxa={taxa}
+                  linkFora={linkFora(cliente.endereco, dados.itens.filter((i) => qtd[i.id]).map((i) => `${qtd[i.id]}× ${i.nome}`))}
+                  aviso={tentou ? erroEntrega : ""}
+                />
+              )}
+            </EtapaDados>
+          )}
           {etapa === "revisao" && <EtapaRevisao dados={dados} cliente={cliente} />}
-          <Totais sub={sub} entrega={dados.taxaEntrega} />
+          <Totais sub={sub} dados={dados} taxa={taxa} />
           {etapa === "carrinho" && erroItens && sub > 0 && <p role="alert" className="font-semibold text-prejuizo">{erroItens}</p>}
           {erro && <p role="alert" className="font-semibold text-prejuizo">{erro}</p>}
         </div>
 
         <div className="sticky bottom-0 -mx-4 border-t border-linha bg-carvao px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3">
           {etapa === "revisao" ? (
-            <button onClick={enviar} disabled={enviando || !!erroItens} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
+            <button onClick={enviar} disabled={enviando || !!erroItens || !!erroEntrega} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
               {enviando ? "Enviando…" : `Enviar pedido · ${brl(total)}`}
             </button>
           ) : (
@@ -381,8 +405,22 @@ function EtapaCarrinho({ dados }: { dados: DadosSite }) {
   );
 }
 
-function Totais({ sub, entrega }: { sub: number; entrega: number }) {
+const MSG_ENTREGA: Partial<Record<Taxa["estado"], string>> = {
+  "sem-pino": "Marca no mapa onde é a entrega.",
+  calculando: "Espera só a entrega terminar de calcular.",
+  fora: "Esse endereço fica fora da nossa área de entrega.",
+};
+
+// Mensagem pronta pro WhatsApp quando o endereço passa da área de entrega.
+function linkFora(e: Endereco, itens: string[]) {
+  const end = `${e.rua}, ${e.numero}${e.complemento ? ` (${e.complemento})` : ""} - ${e.bairro}, ${e.cidade || "João Pessoa"}${e.cep ? `, CEP ${e.cep}` : ""}`;
+  return linkWhatsapp(`Oi! Quero fazer um pedido pelo site, mas meu endereço ficou fora da área de entrega:\n${end}\n\nPedido: ${itens.join(", ")}\n\nDá pra combinar a entrega?`);
+}
+
+function Totais({ sub, dados, taxa }: { sub: number; dados: DadosSite; taxa: Taxa }) {
   if (!sub) return null;
+  const ativo = dados.entrega.ativo;
+  const entrega = !ativo ? dados.taxaEntrega : taxa.estado === "ok" ? taxa.taxa : null;
   return (
     <div className="flex flex-col gap-2 rounded-[var(--radius-card)] bg-brasa p-4">
       <p className="flex justify-between text-lg text-creme-2">
@@ -390,14 +428,18 @@ function Totais({ sub, entrega }: { sub: number; entrega: number }) {
         <span className="num">{brl(sub)}</span>
       </p>
       <p className="flex justify-between text-lg text-creme-2">
-        <span>Entrega até 4 km</span>
-        <span className="num">{entrega ? brl(entrega) : "Grátis"}</span>
+        <span>{!ativo ? "Entrega até 4 km" : "Entrega"}</span>
+        <span className="num">{entrega !== null ? taxaTexto(entrega) : taxa.estado === "calculando" ? "calculando…" : "pelo endereço"}</span>
       </p>
       <p className="flex items-baseline justify-between border-t border-linha pt-2">
         <span className="text-lg font-semibold uppercase tracking-wider">Total</span>
-        <span className="num font-display text-[30px] leading-none text-milho">{brl(sub + entrega)}</span>
+        <span className="num font-display text-[30px] leading-none text-milho">{brl(sub + (entrega ?? 0))}</span>
       </p>
-      <p className="text-creme-3">Mora a mais de 4 km? A gente confirma o valor da entrega no WhatsApp antes de sair.</p>
+      {!ativo ? (
+        <p className="text-creme-3">Mora a mais de 4 km? A gente confirma o valor da entrega no WhatsApp antes de sair.</p>
+      ) : (
+        entrega === null && <p className="text-creme-3">{resumoFaixas(dados.entrega.faixas)}. A taxa sai pelo seu endereço.</p>
+      )}
     </div>
   );
 }
@@ -415,12 +457,14 @@ function Entrada({ rotulo, valor, onChange, erro, opcional, ...p }: { rotulo: st
   );
 }
 
-function EtapaDados({ cliente: c, setCliente, erros, total }: { cliente: DadosCliente; setCliente: (c: DadosCliente) => void; erros: Partial<Record<CampoCliente, string>>; total: number }) {
+function EtapaDados({ cliente: c, setCliente, erros, total, children }: { cliente: DadosCliente; setCliente: (c: DadosCliente) => void; erros: Partial<Record<CampoCliente, string>>; total: number; children?: React.ReactNode }) {
   const end = (k: keyof DadosCliente["endereco"]) => (v: string) => setCliente({ ...c, endereco: { ...c.endereco, [k]: v } });
   return (
     <>
       <Entrada rotulo="Seu nome" valor={c.nome} onChange={(nome) => setCliente({ ...c, nome })} erro={erros.nome} autoComplete="name" maxLength={60} />
       <Entrada rotulo="WhatsApp" valor={mascaraTelefone(c.telefone)} onChange={(v) => setCliente({ ...c, telefone: v.replace(/\D/g, "").slice(0, 11) })} erro={erros.telefone} type="tel" inputMode="tel" autoComplete="tel-national" placeholder="(83) 9…" />
+      {children ?? (
+        <>
       <div className="grid grid-cols-[1fr_96px] gap-3">
         <Entrada rotulo="Rua" valor={c.endereco.rua} onChange={end("rua")} erro={erros.rua} autoComplete="address-line1" maxLength={100} />
         <Entrada rotulo="Número" valor={c.endereco.numero} onChange={end("numero")} erro={erros.numero} maxLength={10} />
@@ -428,6 +472,8 @@ function EtapaDados({ cliente: c, setCliente, erros, total }: { cliente: DadosCl
       <Entrada rotulo="Bairro" valor={c.endereco.bairro} onChange={end("bairro")} erro={erros.bairro} autoComplete="address-level3" maxLength={60} />
       <Entrada rotulo="Complemento" opcional valor={c.endereco.complemento} onChange={end("complemento")} erro={erros.complemento} autoComplete="address-line2" placeholder="Apto, bloco, casa" maxLength={60} />
       <Entrada rotulo="Ponto de referência" opcional valor={c.endereco.referencia} onChange={end("referencia")} erro={erros.referencia} maxLength={100} />
+        </>
+      )}
 
       <div className="flex flex-col gap-2">
         <span className="text-sm font-semibold uppercase tracking-wider text-creme-3">Pagamento na entrega</span>
@@ -466,6 +512,7 @@ function EtapaRevisao({ dados, cliente: c }: { dados: DadosSite; cliente: DadosC
         <br />
         {e.rua}, {e.numero}
         {e.complemento && ` · ${e.complemento}`} · {e.bairro}
+        {e.cidade && ` · ${e.cidade}`}
         {e.referencia && <><br />Referência: {e.referencia}</>}
       </Bloco>
       <Bloco titulo="Pagamento na entrega">

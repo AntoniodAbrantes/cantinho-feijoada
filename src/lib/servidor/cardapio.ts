@@ -1,4 +1,5 @@
 import { adminDb } from "./admin";
+import { entregaSite } from "./entrega";
 import { diaLocal, fimDeSemana } from "../format";
 import { lojaAberta } from "../loja";
 import { panela } from "../pedido";
@@ -25,6 +26,7 @@ export async function carregarSite(agora = Date.now()): Promise<DadosSite> {
     itens: cardapioSite(produtos, pedidos.filter((p) => p.status !== "cancelado"), restaG),
     restaG,
     taxaEntrega: premissas.taxaEntrega.valor,
+    entrega: entregaSite(),
     loja,
     aberta: lojaAberta(loja, agora),
   };
