@@ -51,7 +51,7 @@ function ErroDados() {
   const { erro } = useStore();
   if (!erro) return null;
   return (
-    <div role="alert" className="sticky top-0 z-40 bg-prejuizo px-4 py-2 text-sm font-semibold text-carvao">
+    <div role="alert" className="sticky top-0 z-40 bg-prejuizo px-4 pb-2 pt-[max(8px,env(safe-area-inset-top))] text-sm font-semibold text-carvao">
       Não consegui ler os dados ({erro}). Confere a internet; se continuar, sai e entra de novo.
     </div>
   );
@@ -70,7 +70,7 @@ function SemInternet() {
   const online = useSyncExternalStore(assinarRede, () => navigator.onLine, () => true);
   if (online) return null;
   return (
-    <div role="status" className="sticky top-0 z-40 flex items-center gap-2 bg-tisna px-4 py-2 text-sm text-creme-2">
+    <div role="status" className="sticky top-0 z-40 flex items-center gap-2 bg-tisna px-4 pb-2 pt-[max(8px,env(safe-area-inset-top))] text-sm text-creme-2">
       <IconOffline className="size-4 shrink-0 text-milho" />
       Sem internet. Pode lançar que eu guardo e mando quando voltar.
     </div>

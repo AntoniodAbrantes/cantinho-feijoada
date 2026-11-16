@@ -132,6 +132,7 @@ export interface Pedido extends PedidoBase {
   rastreio?: string; // id de rastreio/{token}: o que o cliente vê
   aceitoEm?: number;
   previsaoEm?: number; // hora prevista de chegada, escolhida no aceite
+  agendadoPara?: number; // pedido do site agendado: começo da faixa de 30 min
   avaliacao?: Avaliacao;
   motivoRecusa?: string;
 }

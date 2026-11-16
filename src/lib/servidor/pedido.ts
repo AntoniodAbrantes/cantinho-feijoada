@@ -6,7 +6,7 @@ import { ENTREGA } from "@/data/entrega";
 import { calcularEntrega, rotaOsrm, type Config, type Rota } from "./entrega";
 import { calcPedido, itemDoProduto } from "../calc";
 import { diaLocal, fimDeSemana } from "../format";
-import { lojaAberta } from "../loja";
+import { horariosAgenda, lojaAberta } from "../loja";
 import { panela, taxasDoMomento } from "../pedido";
 import type { Ponto } from "../entrega";
 import { cardapioSite, erroCarrinho, errosCliente, type Carrinho, type DadosCliente } from "../site";
@@ -38,6 +38,7 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
   if ([e.cep, e.cidade].some((v) => v !== undefined && !ehTexto(v, 400))) throw invalido;
   const l = c.local as Record<string, unknown> | undefined;
   if (l !== undefined && (typeof l !== "object" || l === null || typeof l.lat !== "number" || typeof l.lng !== "number")) throw invalido;
+  if (c.agendado !== undefined && !Number.isSafeInteger(c.agendado)) throw invalido;
   const t = (v: unknown) => (v as string).trim();
   return {
     itens: Object.fromEntries(pares) as Carrinho,
@@ -53,6 +54,7 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
         ...(e.cidade !== undefined && { cidade: t(e.cidade) }),
       },
       ...(l && { local: { lat: l.lat as number, lng: l.lng as number } }),
+      ...(c.agendado !== undefined && { agendado: c.agendado as number }),
     },
   };
 }
@@ -72,7 +74,8 @@ async function entregaDoPedido(local: Ponto | undefined, config: Config, rota: R
 
 export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: string, agora = Date.now(), config: Config = ENTREGA, rota: Rota = rotaOsrm) {
   const db = adminDb();
-  const dia = diaLocal(agora);
+  const agendado = cliente.agendado;
+  const dia = diaLocal(agendado ?? agora); // agendado: entra na panela e nas vendas do dia da entrega
   const fds = fimDeSemana(dia);
   const hora = Math.floor(agora / 3_600_000);
   const limTel = db.doc(`limites/tel-${hash(cliente.telefone)}`);
@@ -93,7 +96,10 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
     ]);
 
     const loja = lojaS.data() as Loja | undefined;
-    if (!loja || !lojaAberta(loja, agora)) throw new Recusa(409, "A loja tá fechada agora.");
+    if (!loja) throw new Recusa(409, "A loja tá fechada agora.");
+    if (agendado !== undefined) {
+      if (!horariosAgenda(loja, agora).some((h) => h.inicio === agendado)) throw new Recusa(409, "Esse horário não dá mais pra agendar. Escolhe outro.");
+    } else if (!lojaAberta(loja, agora)) throw new Recusa(409, "A loja tá fechada agora.");
 
     const usado = (s: FirebaseFirestore.DocumentSnapshot) => (s.get("hora") === hora ? (s.get("n") as number) : 0);
     if (usado(telS) >= LIMITE_TELEFONE_HORA) throw new Recusa(429, "Já chegaram vários pedidos desse WhatsApp. Fala com a gente no WhatsApp.");
@@ -145,6 +151,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       telefone: cliente.telefone,
       endereco: cliente.endereco,
       ...(entrega && { local: cliente.local, distanciaKm: entrega.km }),
+      ...(agendado !== undefined && { agendadoPara: agendado }),
       trocoPara,
       rastreio,
     };
@@ -159,6 +166,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       total,
       pagamento: cliente.pagamento,
       trocoPara,
+      ...(agendado !== undefined && { agendadoPara: agendado }),
     };
 
     t.create(ref, pedido);

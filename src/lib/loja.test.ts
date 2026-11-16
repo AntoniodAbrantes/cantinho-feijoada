@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lojaAberta, proximaAbertura, textoFechado } from "./loja";
+import { horariosAgenda, lojaAberta, proximaAbertura, textoFechado, textoHorario } from "./loja";
 import type { Loja } from "./types";
 
 const auto: Loja = { modo: "auto", horarios: { sexta: { inicio: "11:00", fim: "14:30" }, domingo: { inicio: "11:00", fim: "14:00" } } };
@@ -38,5 +38,26 @@ describe("proximaAbertura", () => {
     expect(proximaAbertura({ ...auto, modo: "fechada" })).toBeNull();
     expect(textoFechado({ modo: "auto", horarios: {} })).toBe("Fechado agora. A gente abre sexta, sábado e domingo, no almoço.");
     expect(textoFechado(auto, em("2026-11-13T09:00:00"))).toBe("Fechado agora. Abre hoje às 11:00.");
+  });
+});
+
+describe("horariosAgenda", () => {
+  const dias = (l: { dia: string }[]) => [...new Set(l.map((h) => h.dia))];
+  it("faixas de 30 min dentro do horário, de amanhã até 7 dias", () => {
+    const h = horariosAgenda(auto, em("2026-11-16T10:00:00")); // segunda
+    expect(dias(h)).toEqual(["2026-11-20", "2026-11-22"]); // sexta e domingo
+    const sexta = h.filter((x) => x.dia === "2026-11-20");
+    expect(sexta).toHaveLength(7); // 11:00 … 14:00 (a última termina 14:30)
+    expect(sexta[0].inicio).toBe(em("2026-11-20T11:00:00").getTime());
+    expect(textoHorario(sexta[6].inicio)).toBe("sexta, 20/11, das 14:00 às 14:30");
+  });
+  it("hoje nunca; amanhã só até as 20h da véspera", () => {
+    expect(dias(horariosAgenda(auto, em("2026-11-19T19:59:00")))).toEqual(["2026-11-20", "2026-11-22"]); // quinta
+    expect(dias(horariosAgenda(auto, em("2026-11-19T20:00:00")))).toEqual(["2026-11-22"]);
+    expect(dias(horariosAgenda(auto, em("2026-11-20T12:00:00")))).toEqual(["2026-11-22", "2026-11-27"]);
+  });
+  it("fechada à mão não agenda; aberta à mão usa os horários", () => {
+    expect(horariosAgenda({ ...auto, modo: "fechada" }, em("2026-11-16T10:00:00"))).toEqual([]);
+    expect(horariosAgenda({ ...auto, modo: "aberta" }, em("2026-11-16T10:00:00"))).toHaveLength(13);
   });
 });

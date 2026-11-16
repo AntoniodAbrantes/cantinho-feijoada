@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { calcPedido } from "@/lib/calc";
 import { brl, horaLocal } from "@/lib/format";
-import { lojaAberta } from "@/lib/loja";
+import { lojaAberta, textoHorario } from "@/lib/loja";
 import { useLoja, useStore } from "@/lib/store";
 import type { Pedido } from "@/lib/types";
 import { SONS, useAlarme, type Som } from "@/components/alarme";
@@ -93,9 +93,10 @@ function CartaoNovo({ p }: { p: Pedido }) {
   const total = calcPedido({ ...p, taxaEntrega: taxa }).cobrado;
   const novaTaxa = taxa !== p.taxaEntrega ? { taxaEntrega: taxa } : undefined;
 
+  // Agendado: a hora já é a faixa que o cliente escolheu, sem prazo.
   const aceitar = () => {
-    mudarStatus(p, "feito", { ...novaTaxa, previsaoEm: Date.now() + Number(prazo) * 60_000 });
-    avisar(`Pedido nº ${p.numero} aceito. Chega em ${prazo} min.`, () => mudarStatus({ ...p, ...novaTaxa, status: "feito" }, "novo", novaTaxa && { taxaEntrega: p.taxaEntrega }));
+    mudarStatus(p, "feito", p.agendadoPara ? novaTaxa : { ...novaTaxa, previsaoEm: Date.now() + Number(prazo) * 60_000 });
+    avisar(`Pedido nº ${p.numero} aceito. ${p.agendadoPara ? `Agendado pra ${textoHorario(p.agendadoPara)}.` : `Chega em ${prazo} min.`}`, () => mudarStatus({ ...p, ...novaTaxa, status: "feito" }, "novo", novaTaxa && { taxaEntrega: p.taxaEntrega }));
   };
   const confirmarRecusa = () => {
     const m = motivo.trim();
@@ -134,10 +135,12 @@ function CartaoNovo({ p }: { p: Pedido }) {
         <span className="text-creme-2">Total</span>
         <span className="num font-display text-3xl">{brl(total)}</span>
       </p>
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-semibold uppercase tracking-wider text-creme-3">Chega na casa do cliente em</span>
-        <Chips rotulo="Chega na casa do cliente em" valor={prazo} onChange={setPrazo} opcoes={PRAZOS.map((v) => ({ v, t: `${v} min` }))} />
-      </div>
+      {!p.agendadoPara && (
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-semibold uppercase tracking-wider text-creme-3">Chega na casa do cliente em</span>
+          <Chips rotulo="Chega na casa do cliente em" valor={prazo} onChange={setPrazo} opcoes={PRAZOS.map((v) => ({ v, t: `${v} min` }))} />
+        </div>
+      )}
       <Botao variante="principal" onClick={aceitar} className="min-h-16 text-2xl">
         Aceitar
       </Botao>

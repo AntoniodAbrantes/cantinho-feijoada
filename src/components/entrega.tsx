@@ -3,6 +3,7 @@ import { IconEstrela } from "@/components/icons";
 import { cx } from "@/components/ui";
 import { linkWhatsappCliente } from "@/lib/contato";
 import { kmTexto, taxaTexto } from "@/lib/entrega";
+import { textoHorario } from "@/lib/loja";
 import { brl } from "@/lib/format";
 import { NOME_PAGAMENTO, mascaraTelefone } from "@/lib/site";
 import type { Pedido } from "@/lib/types";
@@ -22,6 +23,7 @@ export function Entrega({ p }: { p: Pedido }) {
   const e = p.endereco;
   return (
     <div className="flex flex-col gap-1">
+      {p.agendadoPara && <p className="rounded-[var(--radius-ctl)] bg-milho/15 px-3 py-2 text-lg font-semibold text-milho">Agendado: {textoHorario(p.agendadoPara)}</p>}
       <p className="text-lg font-semibold">
         {p.cliente}
         {p.telefone && <span className="num font-normal text-creme-2"> · {mascaraTelefone(p.telefone)}</span>}

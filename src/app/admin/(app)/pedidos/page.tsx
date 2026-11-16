@@ -124,7 +124,7 @@ function Cartao({ p, onAbrir }: { p: Pedido; onAbrir: () => void }) {
       <span className={cx("w-1 shrink-0 rounded-full", CANAL[p.canal].fundo)} aria-hidden />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-center gap-2 text-sm">
-          <span className="num text-creme-3">{horaLocal(p.criadoEm)}</span>
+          <span className="num text-creme-3">{p.agendadoPara ? `entrega ${horaLocal(p.agendadoPara)}` : horaLocal(p.criadoEm)}</span>
           <EtiquetaCanal canal={p.canal} />
           {p.status !== "feito" && <span className={cx("text-xs font-bold uppercase tracking-wider", cancelado ? "text-prejuizo" : p.status === "novo" ? "text-milho" : "text-creme-3")}>· {STATUS[p.status]}</span>}
         </span>

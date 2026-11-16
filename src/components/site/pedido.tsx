@@ -7,8 +7,8 @@ import { ACOMPANHAMENTOS } from "@/data/fotos";
 import { ehSimples } from "@/lib/types";
 import { iniciarAppCheck, tokenAppCheck } from "@/lib/appcheck-cliente";
 import { linkWhatsapp } from "@/lib/contato";
-import { brl } from "@/lib/format";
-import { lojaAberta, textoFechado } from "@/lib/loja";
+import { brl, dataBr, horaLocal, nomeDia } from "@/lib/format";
+import { AGENDA, horariosAgenda, lojaAberta, textoFechado, textoHorario, type Horario } from "@/lib/loja";
 import {
   NOME_PAGAMENTO, PAGAMENTOS, erroCarrinho, errosCliente, mascaraTelefone, subtotal,
   type Carrinho, type CampoCliente, type DadosCliente, type DadosSite, type ItemSite,
@@ -41,6 +41,8 @@ type Etapa = "carrinho" | "dados" | "revisao";
 interface Ctx {
   dados: DadosSite | null;
   aberta: boolean;
+  agenda: Horario[]; // faixas que dá pra agendar agora
+  vende: boolean; // aberta ou com horário pra agendar
   qtd: Carrinho;
   mudar: (id: string, n: number) => void;
   limpar: () => void;
@@ -54,12 +56,16 @@ const usePedido = () => useContext(C)!;
 export function PedidoProvider({ dados, children }: { dados: DadosSite | null; children: React.ReactNode }) {
   const [qtd, setQtd] = useState<Carrinho>({});
   const [aberta, setAberta] = useState(!!dados?.aberta);
+  const [agenda, setAgenda] = useState<Horario[]>([]);
   const [etapa, setEtapa] = useState<Etapa | null>(null);
 
   // A página vem pronta do servidor (até 30 s de cache): o relógio do aparelho confirma se abriu ou fechou.
   useEffect(() => {
     if (!dados) return;
-    const ver = () => setAberta(lojaAberta(dados.loja));
+    const ver = () => {
+      setAberta(lojaAberta(dados.loja));
+      setAgenda(horariosAgenda(dados.loja));
+    };
     ver();
     const t = setInterval(ver, 30_000);
     return () => clearInterval(t);
@@ -96,7 +102,7 @@ export function PedidoProvider({ dados, children }: { dados: DadosSite | null; c
   };
 
   return (
-    <C.Provider value={{ dados, aberta, qtd, mudar, limpar, pode, abrir: () => setEtapa("carrinho"), repetir }}>
+    <C.Provider value={{ dados, aberta, agenda, vende: aberta || agenda.length > 0, qtd, mudar, limpar, pode, abrir: () => setEtapa("carrinho"), repetir }}>
       {children}
       <BarraPedido />
       {etapa && dados && <Checkout etapa={etapa} setEtapa={setEtapa} dados={dados} />}
@@ -105,11 +111,11 @@ export function PedidoProvider({ dados, children }: { dados: DadosSite | null; c
 }
 
 export function StatusLoja({ className }: { className?: string }) {
-  const { dados, aberta } = usePedido();
+  const { dados, aberta, agenda } = usePedido();
   return (
     <p className={cx("flex items-start gap-2 text-lg font-semibold", className)}>
       <span className={cx("mt-2.5 size-2.5 shrink-0 rounded-full", aberta ? "bg-lucro" : "bg-creme-3")} aria-hidden />
-      {aberta ? "Aberto agora. Bora pedir?" : dados ? textoFechado(dados.loja) : "A gente abre sexta, sábado e domingo, no almoço."}
+      {aberta ? "Aberto agora. Bora pedir?" : dados ? `${textoFechado(dados.loja)}${agenda.length ? " Já dá pra agendar seu pedido." : ""}` : "A gente abre sexta, sábado e domingo, no almoço."}
     </p>
   );
 }
@@ -132,11 +138,11 @@ export function UltimoPedido() {
 
 // Último pedido feito neste aparelho: um toque e vai pra revisão com os mesmos itens.
 export function PedirDeNovo() {
-  const { dados, aberta, repetir } = usePedido();
+  const { dados, vende, repetir } = usePedido();
   const [u, setU] = useState<Carrinho | null>(null);
   useEffect(() => setU(ler<Carrinho>(K_ULTIMO)), []);
   const itens = u && dados ? dados.itens.filter((i) => u[i.id] > 0 && !i.esgotado) : [];
-  if (!u || !aberta || !itens.length) return null;
+  if (!u || !vende || !itens.length) return null;
   return (
     <button onClick={() => repetir(u)} className="flex min-h-14 w-full items-center justify-between gap-3 rounded-[var(--radius-ctl)] bg-brasa px-4 py-3 text-left active:bg-tisna">
       <span>
@@ -149,10 +155,10 @@ export function PedirDeNovo() {
 }
 
 export function BotaoAbertura() {
-  const { aberta } = usePedido();
+  const { aberta, vende } = usePedido();
   return (
     <a href="#cardapio" className={cx(botaoPrincipal, "min-h-16 w-full text-2xl")}>
-      {aberta ? "Pedir agora" : "Ver o cardápio"}
+      {aberta ? "Pedir agora" : vende ? "Agendar pedido" : "Ver o cardápio"}
     </a>
   );
 }
@@ -217,10 +223,10 @@ function Grupo({ titulo, itens }: { titulo: string; itens: ItemSite[] }) {
 }
 
 function Quantidade({ i, grande }: { i: ItemSite; grande?: boolean }) {
-  const { aberta, qtd, mudar, pode } = usePedido();
+  const { vende, qtd, mudar, pode } = usePedido();
   const q = qtd[i.id] ?? 0;
   if (i.esgotado) return <span className="rounded-full border border-creme-3 px-3 py-1 text-sm font-bold uppercase tracking-wider text-creme-2">Esgotou</span>;
-  if (!aberta && !q) return null;
+  if (!vende && !q) return null;
   if (!q)
     return grande ? (
       <Botao onClick={() => mudar(i.id, 1)} disabled={!pode(i.id)} className="border border-creme/30">
@@ -245,7 +251,7 @@ function Quantidade({ i, grande }: { i: ItemSite; grande?: boolean }) {
 }
 
 function BarraPedido() {
-  const { dados, aberta, qtd, abrir } = usePedido();
+  const { dados, aberta, vende, qtd, abrir } = usePedido();
   const n = Object.values(qtd).reduce((s, q) => s + q, 0);
   // Carrinho vazio: a abertura já tem o "Pedir agora"; a barra só entra depois de rolar.
   const [rolou, setRolou] = useState(false);
@@ -255,11 +261,11 @@ function BarraPedido() {
     window.addEventListener("scroll", ver, { passive: true });
     return () => window.removeEventListener("scroll", ver);
   }, []);
-  if (aberta && !n && !rolou) return null;
+  if (vende && !n && !rolou) return null;
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-linha bg-carvao/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
-        {!aberta ? (
+        {!vende ? (
           <>
             <span className="flex-1 leading-tight text-creme-2">{dados ? textoFechado(dados.loja) : "Pede pelo WhatsApp."}</span>
             <a href={linkWhatsapp("Oi! Quero saber quando vocês abrem.")} className="inline-flex min-h-12 items-center rounded-[var(--radius-ctl)] bg-tisna px-4 font-semibold uppercase tracking-wide active:bg-linha">
@@ -280,7 +286,7 @@ function BarraPedido() {
           </>
         ) : (
           <a href="#cardapio" className={cx(botaoPrincipal, "w-full")}>
-            Pedir agora
+            {aberta ? "Pedir agora" : "Agendar pedido"}
           </a>
         )}
       </div>
@@ -296,7 +302,10 @@ const TITULO: Record<Etapa, string> = { carrinho: "Seu pedido", dados: "Pra onde
 const ORDEM: Etapa[] = ["carrinho", "dados", "revisao"];
 
 function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etapa | null) => void; dados: DadosSite }) {
-  const { qtd, limpar } = usePedido();
+  const { qtd, limpar, aberta, agenda } = usePedido();
+  // 0 = pra agora. Loja fechada: só agendado, começa na primeira faixa livre.
+  const [quando, setQuando] = useState(() => (aberta ? 0 : (agenda[0]?.inicio ?? 0)));
+  const erroQuando = quando ? (agenda.some((h) => h.inicio === quando) ? "" : "Esse horário não dá mais. Escolhe outro.") : aberta ? "" : "Escolhe o horário da entrega.";
   const [cliente, setCliente] = useState<DadosCliente>(() => ({ ...clienteVazio, ...ler<Partial<DadosCliente>>(K_CLIENTE), trocoPara: 0, obs: "" }));
   const [tentou, setTentou] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -332,7 +341,7 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
   const seguir = () => {
     if (etapa === "carrinho") return setEtapa("dados");
     setTentou(true);
-    if (Object.keys(erros).length || erroEntrega) return;
+    if (Object.keys(erros).length || erroEntrega || erroQuando) return;
     gravar(K_CLIENTE, { nome: cliente.nome, telefone: cliente.telefone, endereco: cliente.endereco, local: cliente.local, pagamento: cliente.pagamento }); // troco e recado valem só pra este pedido
     setEtapa("revisao");
   };
@@ -348,7 +357,7 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
       const r = await fetch("/api/pedido", {
         method: "POST",
         headers: { "content-type": "application/json", ...(token ? { "x-firebase-appcheck": token } : { "x-appcheck-falha": encodeURIComponent(falhaToken || "sem chave") }) },
-        body: JSON.stringify({ itens: qtd, cliente }),
+        body: JSON.stringify({ itens: qtd, cliente: { ...cliente, ...(quando && { agendado: quando }) } }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.erro ?? "Não consegui enviar agora.");
@@ -380,6 +389,7 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
 
         <div className="flex flex-1 flex-col gap-6 pb-6">
           {etapa === "carrinho" && <EtapaCarrinho dados={dados} />}
+          {etapa === "dados" && <Quando aberta={aberta} agenda={agenda} valor={quando} onChange={setQuando} erro={tentou ? erroQuando : ""} />}
           {etapa === "dados" && (
             <EtapaDados cliente={cliente} setCliente={setCliente} erros={tentou ? erros : {}} total={total}>
               {ativo && (
@@ -397,7 +407,8 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
               )}
             </EtapaDados>
           )}
-          {etapa === "revisao" && <EtapaRevisao dados={dados} cliente={cliente} />}
+          {etapa === "revisao" && <EtapaRevisao dados={dados} cliente={cliente} quando={quando} />}
+          {etapa === "revisao" && erroQuando && <p role="alert" className="font-semibold text-prejuizo">{erroQuando}</p>}
           <Totais sub={sub} dados={dados} taxa={taxa} />
           {etapa === "carrinho" && erroItens && sub > 0 && <p role="alert" className="font-semibold text-prejuizo">{erroItens}</p>}
           {erro && <p role="alert" className="font-semibold text-prejuizo">{erro}</p>}
@@ -405,8 +416,8 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
 
         <div className="sticky bottom-0 -mx-4 border-t border-linha bg-carvao px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3">
           {etapa === "revisao" ? (
-            <button onClick={enviar} disabled={enviando || !!erroItens || !!erroEntrega} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
-              {enviando ? "Enviando…" : `Enviar pedido · ${brl(total)}`}
+            <button onClick={enviar} disabled={enviando || !!erroItens || !!erroEntrega || !!erroQuando} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
+              {enviando ? "Enviando…" : `${quando ? "Agendar" : "Enviar"} pedido · ${brl(total)}`}
             </button>
           ) : (
             <button onClick={seguir} disabled={!!erroItens} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
@@ -527,7 +538,34 @@ function EtapaDados({ cliente: c, setCliente, erros, total, children }: { client
   );
 }
 
-function EtapaRevisao({ dados, cliente: c }: { dados: DadosSite; cliente: DadosCliente }) {
+// Pra agora ou numa faixa de 30 min. Loja fechada: só agendado.
+function Quando({ aberta, agenda, valor, onChange, erro }: { aberta: boolean; agenda: Horario[]; valor: number; onChange: (v: number) => void; erro: string }) {
+  if (!agenda.length && aberta) return null;
+  const dias = [...new Set(agenda.map((h) => h.dia))];
+  return (
+    <Campo rotulo="Quando?">
+      {(id) => (
+        <>
+          <select id={id} value={valor} onChange={(e) => onChange(Number(e.target.value))} aria-invalid={!!erro} className={cx(estiloCampo, erro && "border-prejuizo")}>
+            {aberta ? <option value={0}>Agora</option> : !valor && <option value={0} disabled>Escolhe o horário</option>}
+            {dias.map((d) => (
+              <optgroup key={d} label={`${nomeDia(d)}, ${dataBr(d).slice(0, 5)}`}>
+                {agenda.filter((h) => h.dia === d).map((h) => (
+                  <option key={h.inicio} value={h.inicio}>
+                    {nomeDia(d)}, das {horaLocal(h.inicio)} às {horaLocal(h.inicio + AGENDA.passoMin * 60_000)}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {erro ? <span className="font-semibold text-prejuizo">{erro}</span> : !aberta && <span className="text-creme-3">A loja tá fechada agora. Seu pedido fica agendado e a gente confirma no WhatsApp.</span>}
+        </>
+      )}
+    </Campo>
+  );
+}
+
+function EtapaRevisao({ dados, cliente: c, quando }: { dados: DadosSite; cliente: DadosCliente; quando: number }) {
   const { qtd } = usePedido();
   const e = c.endereco;
   return (
@@ -540,6 +578,7 @@ function EtapaRevisao({ dados, cliente: c }: { dados: DadosSite; cliente: DadosC
           </li>
         ))}
       </ul>
+      <Bloco titulo="Quando">{quando ? `Agendado: ${textoHorario(quando)}` : "Agora"}</Bloco>
       <Bloco titulo="Entrega">
         {c.nome} · {mascaraTelefone(c.telefone)}
         <br />

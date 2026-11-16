@@ -122,6 +122,22 @@ describe("pedido do site", () => {
     await expect(criarPedido({ "feijoada-2": 1 }, cliente, "1.1.1.1", sexta("12:00"))).resolves.toMatchObject({ numero: 1 });
   });
 
+  it("agendado: loja fechada aceita faixa válida e o pedido vai pro dia da entrega", async () => {
+    await db.doc("config/loja").set({ modo: "auto", horarios: { sexta: { inicio: "11:00", fim: "14:00" } } });
+    const segunda = new Date("2026-11-16T10:00:00-03:00").getTime();
+    const sexta = (h: string) => new Date(`2026-11-20T${h}:00-03:00`).getTime();
+    await expect(criarPedido({ "feijoada-2": 1 }, { ...cliente, agendado: sexta("12:15") }, "1.1.1.1", segunda)).rejects.toThrow(/horário/);
+    await expect(criarPedido({ "feijoada-2": 1 }, { ...cliente, agendado: sexta("12:00") }, "1.1.1.1", new Date("2026-11-19T20:30:00-03:00").getTime())).rejects.toThrow(/horário/); // passou das 20h da véspera
+    const r = await criarPedido({ "feijoada-2": 1 }, { ...cliente, agendado: sexta("12:00") }, "1.1.1.1", segunda);
+    const [p] = await pedidosSalvos();
+    expect(p).toMatchObject({ status: "novo", dia: "2026-11-20", fimDeSemana: "2026-11-20", agendadoPara: sexta("12:00"), criadoEm: segunda });
+    expect((await db.doc(`rastreio/${r.rastreio}`).get()).get("agendadoPara")).toBe(sexta("12:00"));
+
+    await db.doc("config/loja").set({ modo: "fechada", horarios: { sexta: { inicio: "11:00", fim: "14:00" } } });
+    await expect(criarPedido({ "feijoada-2": 1 }, { ...cliente, agendado: sexta("12:30") }, "1.1.1.1", segunda)).rejects.toThrow(/horário/);
+    expect((await pedir({ itens: { "feijoada-2": 1 }, cliente: { ...cliente, agendado: "amanhã" } })).status).toBe(400);
+  });
+
   it("campos inválidos", async () => {
     const casos: unknown[] = [
       "não é json",

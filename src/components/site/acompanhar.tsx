@@ -7,6 +7,7 @@ import { Selo, cx } from "@/components/ui";
 import { config, emulador } from "@/lib/firebase-config";
 import { LINK_AVALIACAO_GOOGLE, PIX, linkWhatsapp } from "@/lib/contato";
 import { taxaTexto } from "@/lib/entrega";
+import { textoHorario } from "@/lib/loja";
 import { brl, horaLocal } from "@/lib/format";
 import { pixCopiaECola } from "@/lib/pix";
 import { NOME_PAGAMENTO, type PagamentoSite } from "@/lib/site";
@@ -27,6 +28,7 @@ interface Rastreio {
   trocoPara: number;
   motivoRecusa?: string;
   previsaoEm?: number;
+  agendadoPara?: number;
   avaliacao?: { nota: number };
 }
 
@@ -96,7 +98,13 @@ export function Acompanhar({ token }: { token: string }) {
               {FRASE[r.status]}
             </p>
             {r.status === "cancelado" && r.motivoRecusa && <p className="text-xl text-creme-2">Motivo: {r.motivoRecusa}</p>}
-            {(r.status === "feito" || r.status === "saiu") && r.previsaoEm && (
+            {r.agendadoPara && ["novo", "feito", "saiu"].includes(r.status) && (
+              <p className="mt-1 flex flex-col rounded-[var(--radius-card)] bg-brasa px-4 py-3">
+                <span className="text-lg text-creme-2">Agendado pra</span>
+                <span className="font-display text-3xl uppercase leading-tight text-milho">{textoHorario(r.agendadoPara)}</span>
+              </p>
+            )}
+            {(r.status === "feito" || r.status === "saiu") && r.previsaoEm && !r.agendadoPara && (
               <p className="mt-1 flex items-baseline gap-2 rounded-[var(--radius-card)] bg-brasa px-4 py-3">
                 <span className="text-lg text-creme-2">Chega por volta de</span>
                 <span className="num font-display text-4xl text-milho">{horaLocal(r.previsaoEm)}</span>

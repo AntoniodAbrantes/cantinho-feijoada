@@ -204,7 +204,7 @@ function FaixaNovos() {
   const rota = usePathname();
   if (!novos.length || rota === "/admin/ao-vivo") return null;
   return (
-    <Link href="/admin/ao-vivo" role="alert" className="sticky top-0 z-40 block bg-milho px-4 py-3 font-semibold text-carvao">
+    <Link href="/admin/ao-vivo" role="alert" className="sticky top-0 z-40 block bg-milho px-4 pb-3 pt-[max(12px,env(safe-area-inset-top))] text-lg font-semibold text-carvao">
       {novos.length === 1 ? "1 pedido novo do site." : `${novos.length} pedidos novos do site.`} {ligado ? "Toca pra aceitar." : "Som desligado: toca aqui pra ver e ativar."}
     </Link>
   );

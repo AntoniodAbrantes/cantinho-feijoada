@@ -83,6 +83,7 @@ export interface DadosCliente {
   pagamento: PagamentoSite;
   trocoPara: number; // 0 = sem troco
   obs: string;
+  agendado?: number; // começo da faixa agendada (epoch ms); sem = pra agora
 }
 export type CampoCliente = "nome" | "telefone" | "rua" | "numero" | "bairro" | "complemento" | "referencia" | "cep" | "cidade" | "pagamento" | "trocoPara" | "obs";
 
