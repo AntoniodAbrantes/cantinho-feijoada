@@ -2,11 +2,13 @@
 import Link from "next/link";
 import { brl, dataBr, kg, nomeDia, pctFmt } from "@/lib/format";
 import { porCanal, porProduto, porDia, resumo } from "@/lib/painel";
+import { abaixoDoMinimo, nomeCurto } from "@/lib/estoque";
 import { panela } from "@/lib/pedido";
 import { useStore } from "@/lib/store";
 import { Botao, CANAIS, CANAL, Dinheiro, Esqueleto, Estimativa, EtiquetaCanal, Linha, Painel, Rotulo, Selo, Vazio, cx } from "@/components/ui";
 import { ehSimples, type Pedido } from "@/lib/types";
 import { FiltroPeriodo, NOME_PERIODO, usePeriodo } from "@/components/periodo";
+import { IconSeta } from "@/components/icons";
 
 export default function PainelPage() {
   const { pedidos, compras, premissas, carregando } = useStore();
@@ -28,6 +30,8 @@ export default function PainelPage() {
           </p>
         </div>
       </header>
+
+      <AlertaPotes />
 
       <div className="lg:col-span-2">
         <FiltroPeriodo p={per} />
@@ -172,6 +176,22 @@ function Producao({ pedidos, hoje }: { pedidos: Pedido[]; hoje: string }) {
         Produção de {dataBr(prod.producao.data)} · {brl(Math.round(prod.custoKg))}/kg
       </p>
     </Painel>
+  );
+}
+
+// Pote abaixo do mínimo: aparece no topo até alguém registrar a compra.
+function AlertaPotes() {
+  const { embalagens, estoque } = useStore();
+  const lista = estoque ? abaixoDoMinimo(embalagens) : [];
+  if (!lista.length) return null;
+  return (
+    <Link href="/admin/mais/estoque" role="alert" className="flex items-center gap-3 rounded-[var(--radius-card)] border-2 border-prejuizo p-4 active:bg-brasa lg:col-span-2">
+      <span className="flex-1">
+        <span className="block font-semibold text-prejuizo">{lista.length === 1 ? "Pote abaixo do mínimo" : `${lista.length} potes abaixo do mínimo`}</span>
+        <span className="num block text-creme-2">{lista.map((e) => `${nomeCurto(e)}: ${e.quantidade} (mín. ${e.minimo})`).join(" · ")}</span>
+      </span>
+      <IconSeta className="size-5 shrink-0 text-creme-3" />
+    </Link>
   );
 }
 

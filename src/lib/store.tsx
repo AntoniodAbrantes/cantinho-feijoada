@@ -3,8 +3,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { collection, doc, increment, onSnapshot, orderBy, query, writeBatch, type WriteBatch } from "firebase/firestore";
 import { baixaEstoque, calcPedido } from "./calc";
+import { chave, consumo, diferenca, faltando, nomeCurto } from "./estoque";
+import { diaLocal } from "./format";
+import { sincronizarPotes } from "./potes";
 import { fb } from "./firebase";
-import { conta, type Loja, type Cenario, type Compra, type Pedido, type Premissas, type Producao, type Produto, type StatusPedido } from "./types";
+import { conta, type Baixa, type ConfigEstoque, type Embalagem, type Loja, type Cenario, type Compra, type Pedido, type Premissas, type Producao, type Produto, type StatusPedido } from "./types";
 
 // set faz merge; delete apaga. Tudo num lote só: atômico e funciona offline.
 export type Op = { caminho: string; dados?: object; apagar?: boolean };
@@ -17,6 +20,7 @@ export type Extra = Partial<Pick<Pedido, "taxaEntrega" | "motivoRecusa" | "previ
 export type Edicao = Pick<Pedido, "itens" | "desconto" | "taxaEntrega" | "custoEntrega" | "pagamento" | "taxas" | "cliente" | "bairro" | "obs">;
 
 type Aviso = { id: number; texto: string; desfazer?: () => void; erro?: boolean };
+type Alerta = { id: number; texto: string };
 
 interface Dados {
   produtos: Produto[];
@@ -25,6 +29,9 @@ interface Dados {
   pedidos: Pedido[];
   compras: Compra[];
   cenarios: Cenario[];
+  embalagens: Embalagem[];
+  baixas: Baixa[];
+  estoque: ConfigEstoque | null; // null = estoque de potes ainda não começou
 }
 
 interface Store extends Omit<Dados, "premissas"> {
@@ -38,11 +45,13 @@ interface Store extends Omit<Dados, "premissas"> {
   lote: (ops: Op[]) => void;
   aviso: Aviso | null;
   avisar: (texto: string, desfazer?: () => void, erro?: boolean) => void;
+  alerta: Alerta | null; // falta de pote: aparece junto do aviso, sem tomar o lugar dele
+  fecharAlerta: () => void;
 }
 
 const Ctx = createContext<Store | null>(null);
-const vazio: Dados = { produtos: [], premissas: null, producoes: [], pedidos: [], compras: [], cenarios: [] };
-const COLECOES = 6;
+const vazio: Dados = { produtos: [], premissas: null, producoes: [], pedidos: [], compras: [], cenarios: [], embalagens: [], baixas: [], estoque: null };
+const COLECOES = 9;
 
 // Mexe no estoque das bebidas do pedido dentro do mesmo lote (atômico e funciona offline).
 function estoqueNoLote(b: WriteBatch, itens: Pedido["itens"], sinal: 1 | -1) {
@@ -54,7 +63,12 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
   const [prontas, setProntas] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
+  const [alerta, setAlerta] = useState<Alerta | null>(null);
+  const [pendentes, setPendentes] = useState(false); // pedido salvo aqui que o servidor ainda não confirmou
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const timerAlerta = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const dadosRef = useRef(dados);
+  dadosRef.current = dados;
   const pedidosRef = useRef(dados.pedidos); // o "desfazer" roda depois do render que tinha a lista antiga
   pedidosRef.current = dados.pedidos;
 
@@ -62,6 +76,20 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
     clearTimeout(timer.current);
     setAviso({ id: Date.now(), texto, desfazer, erro });
     timer.current = setTimeout(() => setAviso(null), erro ? 8000 : 5000);
+  }, []);
+
+  const fecharAlerta = useCallback(() => setAlerta(null), []);
+
+  // Avisa na hora se o pedido vai deixar algum pote negativo. Não bloqueia: a baixa acontece igual.
+  const conferirPotes = useCallback((depois: Pick<Pedido, "itens" | "status" | "dia"> | null, id: string) => {
+    const d = dadosRef.current;
+    if (!d.estoque || !depois || depois.dia < d.estoque.desde) return;
+    const antes = d.baixas.find((b) => b.id === id)?.potes ?? {};
+    const falta = faltando(diferenca(antes, consumo(depois, d.produtos, d.estoque, diaLocal())), d.embalagens);
+    if (!falta.length) return;
+    clearTimeout(timerAlerta.current);
+    setAlerta({ id: Date.now(), texto: `Faltou pote: ${falta.map((f) => `${nomeCurto(f.e)} fica em ${f.fica}`).join(", ")}. O pedido vale igual; dá entrada quando comprar.` });
+    timerAlerta.current = setTimeout(() => setAlerta(null), 10000);
   }, []);
 
   useEffect(() => {
@@ -86,11 +114,31 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
     const c = (n: string) => collection(db, n);
     const subs = [
       lista("produtos", query(c("produtos"), orderBy("ordem"))),
+      lista("embalagens", query(c("embalagens"), orderBy("ordem"))),
+      lista("baixas", query(c("baixas"))),
       lista("producoes", query(c("producoes"), orderBy("data", "desc"))),
       // shortcut: lê todos os pedidos (poucos milhares por ano); filtrar por data no servidor se passar de ~10 mil.
-      lista("pedidos", query(c("pedidos"), orderBy("criadoEm", "desc"))),
+      // Com metadados: a baixa de potes espera o servidor confirmar o pedido.
+      onSnapshot(
+        query(c("pedidos"), orderBy("criadoEm", "desc")),
+        { includeMetadataChanges: true },
+        (s) => {
+          setPendentes(s.metadata.hasPendingWrites);
+          if (s.docChanges().length || !vistas.has("pedidos")) setDados((d) => ({ ...d, pedidos: s.docs.map((x) => ({ ...(x.data() as Pedido), id: x.id })) }));
+          pronto("pedidos");
+        },
+        falhou,
+      ),
       lista("compras", query(c("compras"), orderBy("data", "desc"))),
       lista("cenarios", query(c("cenarios"), orderBy("ordem"))),
+      onSnapshot(
+        doc(db, "config", "estoque"),
+        (s) => {
+          setDados((d) => ({ ...d, estoque: (s.data() as ConfigEstoque) ?? null }));
+          pronto("estoque");
+        },
+        falhou,
+      ),
       onSnapshot(
         doc(db, "config", "premissas"),
         (s) => {
@@ -118,9 +166,10 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
       b.set(ref, p);
       estoqueNoLote(b, p.itens, -1);
       commit(b);
+      conferirPotes(p, ref.id);
       return ref.id;
     },
-    [commit],
+    [commit, conferirPotes],
   );
 
   const removerPedido = useCallback(
@@ -148,8 +197,9 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
       if (conta(p.status) && !conta(status)) estoqueNoLote(b, p.itens, 1);
       if (!conta(p.status) && conta(status)) estoqueNoLote(b, p.itens, -1);
       commit(b);
+      conferirPotes({ ...p, status }, p.id);
     },
-    [commit],
+    [commit, conferirPotes],
   );
 
   // Bebida: só a diferença entre antes e depois, e só se o pedido conta.
@@ -174,8 +224,9 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
           pagamento: m.pagamento,
         });
       commit(b);
+      conferirPotes({ ...antes, ...m }, antes.id);
     },
-    [commit],
+    [commit, conferirPotes],
   );
 
   const lote = useCallback(
@@ -192,9 +243,30 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
   );
 
   const carregando = prontas < COLECOES || !dados.premissas;
+
+  // Baixa de potes: todo pedido cuja chave mudou (novo, aceito, editado, cancelado, apagado, encomenda
+  // que chegou no dia) vai pra transação. Pega também o que foi lançado offline ou em outro aparelho.
+  const andando = useRef(new Set<string>());
+  useEffect(() => {
+    const { estoque, pedidos, baixas, produtos } = dados;
+    if (carregando || pendentes || !estoque || !navigator.onLine) return;
+    const hoje = diaLocal();
+    const feitas = new Map(baixas.map((b) => [b.id, b.chave]));
+    const ids = [
+      ...pedidos.filter((p) => p.dia >= estoque.desde && (feitas.get(p.id) ?? "") !== chave(p, hoje)).map((p) => p.id),
+      ...baixas.filter((b) => b.chave && !pedidos.some((p) => p.id === b.id)).map((b) => b.id),
+    ];
+    for (const id of ids) {
+      if (andando.current.has(id)) continue;
+      andando.current.add(id);
+      sincronizarPotes(fb().db, id, produtos, estoque, hoje)
+        .catch((e: Error) => console.warn("potes", id, e.message))
+        .finally(() => andando.current.delete(id));
+    }
+  }, [dados, carregando, pendentes]);
   const valor = useMemo<Store>(
-    () => ({ ...dados, premissas: dados.premissas!, carregando, erro, salvarPedido, removerPedido, mudarStatus, editarPedido, lote, aviso, avisar }),
-    [dados, carregando, erro, salvarPedido, removerPedido, mudarStatus, editarPedido, lote, aviso, avisar],
+    () => ({ ...dados, premissas: dados.premissas!, carregando, erro, salvarPedido, removerPedido, mudarStatus, editarPedido, lote, aviso, avisar, alerta, fecharAlerta }),
+    [dados, carregando, erro, salvarPedido, removerPedido, mudarStatus, editarPedido, lote, aviso, avisar, alerta, fecharAlerta],
   );
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }

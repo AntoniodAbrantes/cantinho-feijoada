@@ -28,7 +28,53 @@ export interface Produto {
   pesoFeijoadaG: number;
   embalagem: number;
   estoque?: number; // só bebida
+  potes?: PartePote[]; // receita de embalagens: o que sai do estoque de potes por unidade vendida
   estimativas: string[]; // campos marcados "a confirmar"
+}
+
+// Uma parte do produto e o pote em que ela vai. embalagemId "" = sem pote (ainda não definido).
+export interface PartePote {
+  parte: string;
+  embalagemId: string;
+}
+
+// Potes e sacos. A quantidade pode ficar negativa (vendeu sem ter dado entrada): aparece em vermelho.
+export interface Embalagem {
+  id: string;
+  nome: string;
+  capacidadeMl: number | null;
+  quantidade: number;
+  minimo: number; // abaixo disso, alerta no painel
+  custo: number | null; // unitário, da última compra; null = não informado
+  ordem: number;
+}
+
+export type TipoMovimento = "venda" | "compra" | "ajuste" | "cancelamento";
+
+export interface Movimento {
+  id: string;
+  em: number; // epoch ms
+  dia: string;
+  embalagemId: string;
+  qtd: number; // + entrou, − saiu
+  tipo: TipoMovimento;
+  pedidoId: string | null;
+  obs: string;
+}
+
+// config/estoque. Sem documento = estoque de potes ainda não começou: nada dá baixa.
+export interface ConfigEstoque {
+  sacoPorPedido: boolean;
+  sacoId: string;
+  desde: string; // pedidos deste dia em diante dão baixa
+}
+
+// baixas/{pedidoId}: o que o pedido já tirou do estoque. Mesma chave = nada a fazer (nunca baixa duas vezes).
+export interface Baixa {
+  id: string;
+  potes: Record<string, number>;
+  chave: string;
+  em: number;
 }
 
 export interface Premissa<T = number> {

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { EmailAuthProvider, reauthenticateWithCredential, signOut, updatePassword } from "firebase/auth";
 import { fb } from "@/lib/firebase";
+import { abaixoDoMinimo } from "@/lib/estoque";
 import { useStore } from "@/lib/store";
 import { Botao } from "@/components/ui";
 import { Campo } from "@/components/campos";
@@ -12,6 +13,7 @@ import { IconSeta } from "@/components/icons";
 const SECOES = [
   { href: "/admin/ao-vivo", t: "Pedidos ao vivo", d: "Pedidos do site chegando, com alarme" },
   { href: "/admin/mais/loja", t: "Loja no site", d: "Abrir, fechar e horários" },
+  { href: "/admin/mais/estoque", t: "Estoque de potes", d: "Potes e sacos, compras, ajustes e o que cada produto leva" },
   { href: "/admin/mais/custo", t: "Custo e preço", d: "Quanto custa cada porção e o lucro por canal" },
   { href: "/admin/mais/producoes", t: "Produções", d: "Nota do mercado e custo por kg" },
   { href: "/admin/mais/projecao", t: "Projeção do mês", d: "Cenários, limite do MEI e realizado" },
@@ -20,9 +22,10 @@ const SECOES = [
 ];
 
 export default function Mais() {
-  const { premissas, carregando } = useStore();
+  const { premissas, embalagens, estoque, carregando } = useStore();
   const [senha, setSenha] = useState(false);
   const aConfirmar = carregando ? 0 : Object.values(premissas).filter((x) => x.estimativa).length;
+  const acabando = abaixoDoMinimo(embalagens).length;
   return (
     <div className="flex flex-col gap-5">
       <h1 className="font-display text-3xl uppercase">Mais</h1>
@@ -35,6 +38,7 @@ export default function Mais() {
                 <span className="block text-sm text-creme-3">
                   {s.d}
                   {s.href === "/admin/mais/premissas" && aConfirmar > 0 && <span className="text-milho"> · {aConfirmar} a confirmar</span>}
+                  {s.href === "/admin/mais/estoque" && (estoque ? acabando > 0 && <span className="text-prejuizo"> · {acabando} abaixo do mínimo</span> : !carregando && <span className="text-milho"> · falta começar</span>)}
                 </span>
               </span>
               <IconSeta className="size-5 text-creme-3" />

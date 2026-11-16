@@ -149,7 +149,7 @@ function Detalhe({ p, onFechar }: { p?: Pedido; onFechar: () => void }) {
     const antes = p.status;
     onFechar(); // o aviso com "desfazer" fica atrás do modal
     mudarStatus(p, s);
-    avisar(s === "cancelado" ? (conta(antes) ? "Pedido cancelado. Bebidas voltaram pro estoque." : "Pedido recusado.") : s === "feito" && antes === "novo" ? "Pedido aceito." : `Marcado como ${STATUS[s].toLowerCase()}.`, () => mudarStatus({ ...p, status: s }, antes));
+    avisar(s === "cancelado" ? (conta(antes) ? "Pedido cancelado. Bebidas e potes voltaram pro estoque." : "Pedido recusado.") : s === "feito" && antes === "novo" ? "Pedido aceito." : `Marcado como ${STATUS[s].toLowerCase()}.`, () => mudarStatus({ ...p, status: s }, antes));
   };
 
   return (

@@ -5,7 +5,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { StoreProvider, useStore, useUsuario } from "@/lib/store";
 import { AlarmeProvider } from "./alarme";
 import { Selo, cx } from "./ui";
-import { IconCaixa, IconHoje, IconMais, IconMenu, IconOffline, IconPedidos } from "./icons";
+import { IconCaixa, IconFechar, IconHoje, IconMais, IconMenu, IconOffline, IconPedidos } from "./icons";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const usuario = useUsuario();
@@ -78,24 +78,37 @@ function SemInternet() {
 }
 
 function AvisoFlutuante() {
-  const { aviso, avisar } = useStore();
-  if (!aviso) return null;
+  const { aviso, avisar, alerta, fecharAlerta } = useStore();
+  if (!aviso && !alerta) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(96px+env(safe-area-inset-bottom))] z-50 flex justify-center px-4">
-      <div key={aviso.id} role={aviso.erro ? "alert" : "status"} className={cx("pointer-events-auto flex min-h-14 w-full max-w-md animate-subir items-center gap-3 rounded-[var(--radius-ctl)] py-1 pl-4 pr-1 text-carvao shadow-lg shadow-black/40", aviso.erro ? "bg-prejuizo" : "bg-creme")}>
-        <span className="flex-1 font-semibold">{aviso.texto}</span>
-        {aviso.desfazer && (
-          <button
-            onClick={() => {
-              aviso.desfazer!();
-              avisar("Pronto, desfeito.");
-            }}
-            className="min-h-12 rounded-xl px-4 font-bold uppercase tracking-wide active:bg-carvao/10"
-          >
-            Desfazer
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(96px+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-4">
+      {alerta && (
+        <div key={`alerta-${alerta.id}`} role="alert" className="pointer-events-auto flex w-full max-w-md animate-subir items-center gap-2 rounded-[var(--radius-ctl)] bg-prejuizo py-1 pl-4 pr-1 text-carvao shadow-lg shadow-black/40">
+          <span className="flex-1 py-2 font-semibold">{alerta.texto}</span>
+          <Link href="/admin/mais/estoque" onClick={fecharAlerta} className="flex min-h-12 items-center rounded-xl px-3 font-bold uppercase tracking-wide active:bg-carvao/10">
+            Ver
+          </Link>
+          <button onClick={fecharAlerta} aria-label="Fechar aviso de pote" className="grid size-12 place-items-center rounded-xl active:bg-carvao/10">
+            <IconFechar className="size-5" />
           </button>
-        )}
-      </div>
+        </div>
+      )}
+      {aviso && (
+        <div key={`aviso-${aviso.id}`} role={aviso.erro ? "alert" : "status"} className={cx("pointer-events-auto flex min-h-14 w-full max-w-md animate-subir items-center gap-3 rounded-[var(--radius-ctl)] py-1 pl-4 pr-1 text-carvao shadow-lg shadow-black/40", aviso.erro ? "bg-prejuizo" : "bg-creme")}>
+          <span className="flex-1 font-semibold">{aviso.texto}</span>
+          {aviso.desfazer && (
+            <button
+              onClick={() => {
+                aviso.desfazer!();
+                avisar("Pronto, desfeito.");
+              }}
+              className="min-h-12 rounded-xl px-4 font-bold uppercase tracking-wide active:bg-carvao/10"
+            >
+              Desfazer
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
