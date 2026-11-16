@@ -9,9 +9,9 @@ import { brl } from "@/lib/format";
 import type { Pedido } from "@/lib/types";
 
 // Alarme dos pedidos do site: vale em qualquer tela do sistema, não só na de pedidos ao vivo.
-export const SONS = { sirene: "Sirene (a mais alta)", apito: "Apito", sino: "Sino" } as const;
+export const SONS = { sino: "Sino", sirene: "Sirene (a mais alta)", apito: "Apito" } as const;
 export type Som = keyof typeof SONS;
-const K_ALARME = "cantinho:alarme";
+const K_ALARME = "cantinho:alarme-v2"; // v2: o padrão virou o sino, a escolha antiga (sirene) não vale mais
 
 interface Alarme {
   novos: Pedido[]; // esperando aceite, o mais antigo primeiro
@@ -49,7 +49,7 @@ export function AlarmeProvider({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState(true);
   const [ligado, setLigado] = useState(false);
   const [testando, setTestando] = useState(false);
-  const [pref, setPref] = useState<{ som: Som; volume: number }>({ som: "sirene", volume: 1 });
+  const [pref, setPref] = useState<{ som: Som; volume: number }>({ som: "sino", volume: 1 });
 
   useEffect(() => {
     try {
