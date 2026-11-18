@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
-import { calcPedido, itemDoProduto } from "@/lib/calc";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { calcPedido, custoPorcao, itemDoProduto } from "@/lib/calc";
 import { brl, dataBr, diaLocal, fimDeSemana, nomeDia, reais, somaDias } from "@/lib/format";
 import { producaoDoDia, taxasDoMomento } from "@/lib/pedido";
 import { useStore, type Edicao } from "@/lib/store";
@@ -10,6 +10,11 @@ import { ehSimples, type Canal, type Categoria, type Desconto, type FormaPagamen
 import { Botao, CANAL, Chips, Dinheiro, Esqueleto, Rotulo, Selo, cx } from "@/components/ui";
 import { Campo, Texto, Valor, estiloCampo } from "@/components/campos";
 import { IconFechar, IconMenos, IconSeta } from "@/components/icons";
+import { useAlarme } from "@/components/alarme";
+import { BlocoSelos } from "@/components/selos";
+import { useCartao } from "@/components/selos-admin";
+import { itemPremio, normalizarTelefone, telefoneValido } from "@/lib/fidelidade";
+import { mascaraTelefone } from "@/lib/site";
 
 const PAGAMENTOS: { v: FormaPagamento; t: string }[] = [
   { v: "pix", t: "Pix" },
@@ -62,11 +67,14 @@ function Carregar() {
 }
 
 function NovoPedido({ original: o }: { original?: Pedido }) {
-  const { produtos, premissas, producoes, salvarPedido, removerPedido, editarPedido, avisar } = useStore();
+  const { produtos, premissas, producoes, pedidos, salvarPedido, removerPedido, editarPedido, avisar } = useStore();
   const router = useRouter();
+  const { caixa } = useAlarme();
   const [canal, setCanal] = useState<Canal>(o?.canal ?? "whatsapp");
-  const [qtd, setQtd] = useState<Record<string, number>>(() => Object.fromEntries(o?.itens.map((i) => [i.produtoId, i.qtd]) ?? []));
-  const [precos, setPrecos] = useState<Record<string, number>>(() => Object.fromEntries(o?.itens.map((i) => [i.produtoId, i.preco]) ?? []));
+  // O presente da fidelidade fica de fora dos botões: passa igual na edição.
+  const pagos = o?.itens.filter((i) => !i.brinde) ?? [];
+  const [qtd, setQtd] = useState<Record<string, number>>(() => Object.fromEntries(pagos.map((i) => [i.produtoId, i.qtd])));
+  const [precos, setPrecos] = useState<Record<string, number>>(() => Object.fromEntries(pagos.map((i) => [i.produtoId, i.preco])));
   const [pagamento, setPagamento] = useState<FormaPagamento>(o?.pagamento ?? "pix");
   const [desconto, setDesconto] = useState<Desconto>(o?.desconto ?? semDesconto);
   const [taxaEntrega, setTaxaEntrega] = useState(o?.taxaEntrega ?? premissas.taxaEntrega.valor);
@@ -74,14 +82,24 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
   const [cliente, setCliente] = useState(o?.cliente ?? "");
   const [bairro, setBairro] = useState(o?.bairro ?? "");
   const [obs, setObs] = useState(o?.obs ?? "");
+  const [telefone, setTelefone] = useState(o?.telefone ?? "");
+  const tel = normalizarTelefone(telefone);
   const [detalhes, setDetalhes] = useState(false);
   // Encomenda: pedido de outro dia (ex.: feijoada pra 50 pessoas no dia 30). Conta nas vendas do dia da entrega.
   const [encomenda, setEncomenda] = useState("");
+  const [hora, setHora] = useState(""); // horário aproximado da encomenda (opcional)
+  const [usouPote, setUsouPote] = useState(!o?.semPote);
 
   const amanha = somaDias(diaLocal(), 1);
   const hoje = o?.dia ?? (encomenda || diaLocal());
   const dataInvalida = encomenda !== "" && encomenda < amanha;
   const prod = producaoDoDia(producoes, hoje, premissas);
+  // Selo do Cantinho pelo WhatsApp: mesmo cartão e mesma regra do site (iFood não participa).
+  const selos = useCartao(canal !== "ifood" ? telefone : undefined);
+  const [escolha, setEscolha] = useState({ usar: true, escolhidoId: "" });
+  const premioId = selos?.liberados ? selos.premio?.id ?? "" : "";
+  useEffect(() => setEscolha({ usar: true, escolhidoId: premioId }), [premioId]);
+  const brinde = !o && selos && escolha.usar ? itemPremio(selos, escolha.escolhidoId, produtos, canal, prod?.custoKg ?? 0, premissas) : null;
   const noPedido = (p: Produto) => !!o?.itens.some((i) => i.produtoId === p.id);
   const vende = (p: Produto) => (canal === "ifood" ? p.ativoIfood : canal === "site" ? p.ativoSite : p.ativoWhatsapp);
   const ativos = produtos.filter((p) => vende(p) || noPedido(p)).sort((a, b) => a.ordem - b.ordem);
@@ -92,16 +110,18 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
       ativos
         .filter((p) => qtd[p.id])
         .map((p) => {
-          const antes = o?.itens.find((i) => i.produtoId === p.id);
-          const i = antes ? { ...antes, qtd: qtd[p.id] } : itemDoProduto(p, canal, qtd[p.id], prod?.custoKg ?? 0, premissas);
+          const antes = o?.itens.find((i) => i.produtoId === p.id && !i.brinde);
+          // Item antigo (antes de guardar a embalagem) pega a do cadastro, pro "Usou pote? Não" tirar do custo.
+          const i = antes ? { ...antes, qtd: qtd[p.id], embalagem: antes.embalagem ?? custoPorcao(p, 0, 0).embalagem } : itemDoProduto(p, canal, qtd[p.id], prod?.custoKg ?? 0, premissas);
           return precos[p.id] !== undefined ? { ...i, preco: precos[p.id] } : i;
         }),
     [ativos, qtd, precos, canal, prod, premissas, o],
   );
+  const todos = [...itens, ...(o ? o.itens.filter((i) => i.brinde) : brinde ? [brinde.item] : [])];
   const taxas = o && pagamento === o.pagamento ? o.taxas : taxasDoMomento(canal, pagamento, premissas);
-  const pedido = { canal, itens, desconto, taxaEntrega, custoEntrega, pagamento, taxas };
+  const pedido = { canal, itens: todos, desconto, taxaEntrega, custoEntrega, pagamento, taxas, semPote: !usouPote };
   const t = calcPedido(pedido);
-  const nItens = itens.reduce((s, i) => s + i.qtd, 0);
+  const nItens = todos.reduce((s, i) => s + i.qtd, 0);
 
   const trocarCanal = (c: Canal) => {
     setCanal(c);
@@ -122,12 +142,23 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
     setObs("");
     setDetalhes(false);
     setEncomenda("");
+    setHora("");
+    setUsouPote(true);
+    setTelefone("");
+  };
+  // Achou o número: puxa o nome do último pedido dele.
+  const mudarTelefone = (v: string) => {
+    const d = v.replace(/\D/g, "").slice(0, 13);
+    setTelefone(d);
+    const n = normalizarTelefone(d);
+    const ultimo = telefoneValido(n) && !cliente ? pedidos.find((p) => p.telefone && normalizarTelefone(p.telefone) === n && p.cliente) : null;
+    if (ultimo) setCliente(ultimo.cliente);
   };
 
   const salvar = () => {
     if (o) {
-      const campos = (x: Edicao): Edicao => ({ itens: x.itens, desconto: x.desconto, taxaEntrega: x.taxaEntrega, custoEntrega: x.custoEntrega, pagamento: x.pagamento, taxas: x.taxas, cliente: x.cliente, bairro: x.bairro, obs: x.obs });
-      const novo = campos({ ...pedido, cliente: cliente.trim(), bairro: bairro.trim(), obs: obs.trim() });
+      const campos = (x: Edicao): Edicao => ({ itens: x.itens, desconto: x.desconto, taxaEntrega: x.taxaEntrega, custoEntrega: x.custoEntrega, pagamento: x.pagamento, taxas: x.taxas, cliente: x.cliente, bairro: x.bairro, obs: x.obs, semPote: !!x.semPote, telefone: x.telefone ?? "" });
+      const novo = campos({ ...pedido, cliente: cliente.trim(), bairro: bairro.trim(), obs: obs.trim(), telefone: telefoneValido(tel) ? tel : "" });
       editarPedido(o, novo);
       avisar(`Pedido alterado · ${brl(t.cobrado)}`, () => editarPedido({ ...o, ...novo }, campos(o)));
       router.push("/admin/pedidos");
@@ -144,7 +175,12 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
       obs: obs.trim(),
       status: "feito",
       producaoId: prod?.producao.id ?? "",
+      ...(telefoneValido(tel) && { telefone: tel }),
+      ...(brinde && { fidelidade: brinde.resgate }),
+      ...(encomenda && hora && { agendadoPara: Date.parse(`${encomenda}T${hora}:00-03:00`) }), // Fortaleza não tem horário de verão
+      ...(encomenda === amanha && { lembreteEm: agora }), // lançada na véspera: aparece no aviso, sem tocar o alarme
     });
+    caixa();
     limpar();
     avisar(encomenda ? `Encomenda salva pra ${dataBr(hoje)} · ${brl(t.cobrado)}` : `Pedido salvo · ${brl(t.cobrado)}`, () => removerPedido(id));
   };
@@ -205,11 +241,27 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
               opcoes={[{ v: "hoje", t: "Venda de hoje" }, { v: "encomenda", t: "Encomenda" }]}
             />
             {encomenda !== "" && (
-              <Campo rotulo="Dia da entrega">
-                {(id) => <input id={id} type="date" min={amanha} value={encomenda} onChange={(e) => setEncomenda(e.target.value || amanha)} className={estiloCampo} />}
-              </Campo>
+              <div className="grid grid-cols-2 gap-3">
+                <Campo rotulo="Dia da entrega">
+                  {(id) => <input id={id} type="date" min={amanha} value={encomenda} onChange={(e) => setEncomenda(e.target.value || amanha)} className={estiloCampo} />}
+                </Campo>
+                <Campo rotulo="Horário aproximado">
+                  {(id) => <input id={id} type="time" value={hora} onChange={(e) => setHora(e.target.value)} className={estiloCampo} />}
+                </Campo>
+              </div>
             )}
             {dataInvalida && <p className="text-prejuizo">Encomenda é pra amanhã em diante.</p>}
+          </div>
+        )}
+
+        {canal !== "ifood" && (
+          <div className="flex flex-col gap-3">
+            <Campo rotulo="WhatsApp do cliente (pros selos)">
+              {(id) => <input id={id} type="tel" inputMode="tel" value={mascaraTelefone(telefone)} onChange={(e) => mudarTelefone(e.target.value)} placeholder="(83) 9…" className={estiloCampo} />}
+            </Campo>
+            {telefone && !telefoneValido(tel) && <p className="text-sm text-creme-3">Com DDD: (83) 9xxxx-xxxx.</p>}
+            {selos && !o && <BlocoSelos c={selos} escolha={escolha} onEscolha={setEscolha} comoFunciona={false} />}
+            {o?.fidelidade && <p className="font-semibold text-milho">Pedido de resgate de fidelidade: o presente fica como está.</p>}
           </div>
         )}
 
@@ -246,6 +298,12 @@ function NovoPedido({ original: o }: { original?: Pedido }) {
             ))}
           </div>
         </section>
+
+        <div className="flex flex-col gap-2">
+          <Rotulo>Usou pote?</Rotulo>
+          <Chips rotulo="Usou pote?" valor={usouPote ? "sim" : "nao"} onChange={(v) => setUsouPote(v === "sim")} opcoes={[{ v: "sim", t: "Sim" }, { v: "nao", t: "Não" }]} />
+          {!usouPote && <p className="text-sm text-creme-3">Nenhum pote sai do estoque nem entra no custo deste pedido.</p>}
+        </div>
 
         <section className="rounded-[var(--radius-card)] bg-brasa">
           <button onClick={() => setDetalhes(!detalhes)} aria-expanded={detalhes} className="flex min-h-14 w-full items-center gap-3 px-4 text-left">

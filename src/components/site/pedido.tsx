@@ -15,6 +15,10 @@ import {
 } from "@/lib/site";
 import { botaoPrincipal } from "./estilo";
 import { EnderecoEntrega, useTaxa, type Taxa } from "./endereco";
+import { TempoEstimado, useTempo } from "./tempo";
+import { BlocoSelos } from "@/components/selos";
+import { normalizarTelefone, telefoneValido } from "@/lib/fidelidade";
+import type { Selos } from "@/lib/servidor/fidelidade";
 import { resumoFaixas, taxaTexto, type Ponto } from "@/lib/entrega";
 import type { Endereco } from "@/lib/types";
 
@@ -310,8 +314,16 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
   const [tentou, setTentou] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
+  const tempo = useTempo(dados.tempo);
+  const selos = useSelos(cliente.telefone);
+  const [escolha, setEscolha] = useState({ usar: true, escolhidoId: "" });
+  useEffect(() => setEscolha({ usar: true, escolhidoId: selos?.ativo && selos.premio ? selos.premio.id : "" }), [selos]);
+  // Presente liberado e não guardado: entra no pedido (a rota confere de novo).
+  const brinde = selos?.ativo && selos.liberados > 0 && selos.premio && escolha.usar && escolha.escolhidoId
+    ? { id: escolha.escolhidoId, nome: escolha.escolhidoId === selos.premio.id ? selos.premio.nome : selos.trocas.find((t) => t.id === escolha.escolhidoId)!.nome, preco: selos.trocas.find((t) => t.id === escolha.escolhidoId)?.diferenca ?? 0 }
+    : null;
 
-  const sub = subtotal(qtd, dados.itens);
+  const sub = subtotal(qtd, dados.itens) + (brinde?.preco ?? 0);
   const ativo = dados.entrega.ativo; // taxa por distância (com mapa) ou fixa
   const taxa = useTaxa(cliente.local, ativo);
   const total = sub + (ativo ? (taxa.estado === "ok" ? taxa.taxa : 0) : dados.taxaEntrega);
@@ -357,7 +369,7 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
       const r = await fetch("/api/pedido", {
         method: "POST",
         headers: { "content-type": "application/json", ...(token ? { "x-firebase-appcheck": token } : { "x-appcheck-falha": encodeURIComponent(falhaToken || "sem chave") }) },
-        body: JSON.stringify({ itens: qtd, cliente: { ...cliente, ...(quando && { agendado: quando }) } }),
+        body: JSON.stringify({ itens: qtd, cliente: { ...cliente, ...(quando && { agendado: quando }), ...(brinde && { premio: { escolhidoId: brinde.id } }) } }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.erro ?? "Não consegui enviar agora.");
@@ -389,9 +401,16 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
 
         <div className="flex flex-1 flex-col gap-6 pb-6">
           {etapa === "carrinho" && <EtapaCarrinho dados={dados} />}
+          {etapa !== "dados" && !quando && sub > 0 && <TempoEstimado tempo={tempo} />}
           {etapa === "dados" && <Quando aberta={aberta} agenda={agenda} valor={quando} onChange={setQuando} erro={tentou ? erroQuando : ""} />}
           {etapa === "dados" && (
-            <EtapaDados cliente={cliente} setCliente={setCliente} erros={tentou ? erros : {}} total={total}>
+            <EtapaDados
+              cliente={cliente}
+              setCliente={setCliente}
+              erros={tentou ? erros : {}}
+              total={total}
+              selos={selos?.ativo ? <BlocoSelos c={selos} escolha={escolha} onEscolha={setEscolha} /> : null}
+            >
               {ativo && (
                 <EnderecoEntrega
                   e={dados.entrega}
@@ -407,9 +426,9 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
               )}
             </EtapaDados>
           )}
-          {etapa === "revisao" && <EtapaRevisao dados={dados} cliente={cliente} quando={quando} />}
+          {etapa === "revisao" && <EtapaRevisao dados={dados} cliente={cliente} quando={quando} brinde={brinde} />}
           {etapa === "revisao" && erroQuando && <p role="alert" className="font-semibold text-prejuizo">{erroQuando}</p>}
-          <Totais sub={sub} dados={dados} taxa={taxa} />
+          <Totais sub={sub} dados={dados} taxa={taxa} brinde={brinde} />
           {etapa === "carrinho" && erroItens && sub > 0 && <p role="alert" className="font-semibold text-prejuizo">{erroItens}</p>}
           {erro && <p role="alert" className="font-semibold text-prejuizo">{erro}</p>}
         </div>
@@ -461,16 +480,24 @@ function linkFora(e: Endereco, itens: string[]) {
   return linkWhatsapp(`Oi! Quero fazer um pedido pelo site, mas meu endereço ficou fora da área de entrega:\n${end}\n\nPedido: ${itens.join(", ")}\n\nDá pra combinar a entrega?`);
 }
 
-function Totais({ sub, dados, taxa }: { sub: number; dados: DadosSite; taxa: Taxa }) {
-  if (!sub) return null;
+type Brinde = { id: string; nome: string; preco: number } | null;
+
+function Totais({ sub, dados, taxa, brinde }: { sub: number; dados: DadosSite; taxa: Taxa; brinde: Brinde }) {
+  if (!sub && !brinde) return null;
   const ativo = dados.entrega.ativo;
   const entrega = !ativo ? dados.taxaEntrega : taxa.estado === "ok" ? taxa.taxa : null;
   return (
     <div className="flex flex-col gap-2 rounded-[var(--radius-card)] bg-brasa p-4">
       <p className="flex justify-between text-lg text-creme-2">
         <span>Itens</span>
-        <span className="num">{brl(sub)}</span>
+        <span className="num">{brl(sub - (brinde?.preco ?? 0))}</span>
       </p>
+      {brinde && (
+        <p className="flex justify-between gap-3 text-lg text-milho">
+          <span>Presente: {brinde.nome}</span>
+          <span className="num">{brinde.preco ? `+ ${brl(brinde.preco)}` : "grátis"}</span>
+        </p>
+      )}
       <p className="flex justify-between text-lg text-creme-2">
         <span>{!ativo ? "Entrega até 4 km" : "Entrega"}</span>
         <span className="num">{entrega !== null ? taxaTexto(entrega) : taxa.estado === "calculando" ? "calculando…" : "pelo endereço"}</span>
@@ -501,12 +528,13 @@ function Entrada({ rotulo, valor, onChange, erro, opcional, ...p }: { rotulo: st
   );
 }
 
-function EtapaDados({ cliente: c, setCliente, erros, total, children }: { cliente: DadosCliente; setCliente: (c: DadosCliente) => void; erros: Partial<Record<CampoCliente, string>>; total: number; children?: React.ReactNode }) {
+function EtapaDados({ cliente: c, setCliente, erros, total, selos, children }: { cliente: DadosCliente; setCliente: (c: DadosCliente) => void; erros: Partial<Record<CampoCliente, string>>; total: number; selos: React.ReactNode; children?: React.ReactNode }) {
   const end = (k: keyof DadosCliente["endereco"]) => (v: string) => setCliente({ ...c, endereco: { ...c.endereco, [k]: v } });
   return (
     <>
       <Entrada rotulo="Seu nome" valor={c.nome} onChange={(nome) => setCliente({ ...c, nome })} erro={erros.nome} autoComplete="name" maxLength={60} />
       <Entrada rotulo="WhatsApp" valor={mascaraTelefone(c.telefone)} onChange={(v) => setCliente({ ...c, telefone: v.replace(/\D/g, "").slice(0, 11) })} erro={erros.telefone} type="tel" inputMode="tel" autoComplete="tel-national" placeholder="(83) 9…" />
+      {selos}
       {children ?? (
         <>
       <div className="grid grid-cols-[1fr_96px] gap-3">
@@ -565,7 +593,7 @@ function Quando({ aberta, agenda, valor, onChange, erro }: { aberta: boolean; ag
   );
 }
 
-function EtapaRevisao({ dados, cliente: c, quando }: { dados: DadosSite; cliente: DadosCliente; quando: number }) {
+function EtapaRevisao({ dados, cliente: c, quando, brinde }: { dados: DadosSite; cliente: DadosCliente; quando: number; brinde: Brinde }) {
   const { qtd } = usePedido();
   const e = c.endereco;
   return (
@@ -577,6 +605,12 @@ function EtapaRevisao({ dados, cliente: c, quando }: { dados: DadosSite; cliente
             <span className="num text-creme-2">{brl(qtd[i.id] * i.preco)}</span>
           </li>
         ))}
+        {brinde && (
+          <li className="flex justify-between gap-3 text-milho">
+            <span>1× {brinde.nome} (presente)</span>
+            <span className="num">{brinde.preco ? brl(brinde.preco) : "grátis"}</span>
+          </li>
+        )}
       </ul>
       <Bloco titulo="Quando">{quando ? `Agendado: ${textoHorario(quando)}` : "Agora"}</Bloco>
       <Bloco titulo="Entrega">
@@ -603,4 +637,26 @@ function Bloco({ titulo, children }: { titulo: string; children: React.ReactNode
       <p className="text-lg leading-snug">{children}</p>
     </div>
   );
+}
+
+// Selos do WhatsApp digitado. Consulta no servidor (os pedidos não são públicos), meio segundo depois de parar de digitar.
+function useSelos(telefone: string) {
+  const [s, setS] = useState<Selos | null>(null);
+  const tel = normalizarTelefone(telefone);
+  const valido = telefoneValido(tel);
+  useEffect(() => {
+    setS(null);
+    if (!valido) return;
+    const ctl = new AbortController();
+    const t = setTimeout(() => {
+      fetch("/api/fidelidade", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ telefone: tel }), signal: ctl.signal })
+        .then((r) => (r.ok ? (r.json() as Promise<Selos>) : null))
+        .then(setS, () => {}); // sem selos não trava o pedido
+    }, 500);
+    return () => {
+      clearTimeout(t);
+      ctl.abort();
+    };
+  }, [tel, valido]);
+  return s;
 }

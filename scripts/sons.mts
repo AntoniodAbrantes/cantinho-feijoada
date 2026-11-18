@@ -60,8 +60,20 @@ function conexao(t: number) {
   return 0;
 }
 
+// Caixa registradora ("cha-ching"): chiado curto da gaveta + duas moedinhas agudas. Toca ao lançar pedido.
+let ruido = 1;
+function caixa(t: number) {
+  ruido = (ruido * 16807) % 2147483647; // pseudoaleatório fixo: o arquivo sai igual toda vez
+  const cha = t < 0.09 ? 0.5 * Math.exp(-t * 30) * ((ruido / 2147483647) * 2 - 1) : 0;
+  const ding = (t0: number, f: number) => {
+    const x = t - t0;
+    return x < 0 ? 0 : Math.exp(-x * 6) * (0.5 * seno(f)(x) + 0.3 * seno(f * 2.76)(x) + 0.15 * seno(f * 5.4)(x));
+  };
+  return cha + 0.8 * (ding(0.08, 2093) + ding(0.2, 2637));
+}
+
 const pasta = new URL("../public/sons/", import.meta.url);
 mkdirSync(pasta, { recursive: true });
-const sons: [string, number, Onda][] = [["sirene", 2, sirene], ["sino", 1.6, sino], ["apito", 1.2, apito], ["conexao", 3, conexao]];
+const sons: [string, number, Onda][] = [["sirene", 2, sirene], ["sino", 1.6, sino], ["apito", 1.2, apito], ["conexao", 3, conexao], ["caixa", 0.9, caixa]];
 for (const [nome, s, onda] of sons) writeFileSync(new URL(`${nome}.wav`, pasta), wav(s, onda));
 console.log("sons gerados em public/sons");

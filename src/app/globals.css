@@ -27,6 +27,25 @@
   --animate-subir: subir 200ms ease-out;
   --animate-brilho: brilho 1.4s ease-in-out infinite;
   --animate-piscar: piscar 1s steps(1, end) infinite;
+  --animate-carimbo: carimbo 420ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+  --animate-impacto: impacto 260ms ease-out both;
+  --animate-confete: confete 1.6s ease-out both;
+}
+
+/* Selo do Cantinho: o selo desce no cartão, o cartão sente o baque, o confete cai e some. */
+@keyframes carimbo {
+  0% { opacity: 0; transform: scale(1.9) rotate(var(--giro, 0deg)); }
+  60% { opacity: 1; transform: scale(0.9) rotate(var(--giro, 0deg)); }
+  100% { opacity: 0.92; transform: scale(1) rotate(var(--giro, 0deg)); }
+}
+@keyframes impacto {
+  0%, 100% { transform: rotate(-1deg); }
+  40% { transform: rotate(-1deg) translateY(3px) scale(0.99); }
+}
+@keyframes confete {
+  0% { opacity: 0; transform: translate(0, -10px) rotate(0); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx, 0), 140px) rotate(var(--rot, 180deg)); }
 }
 
 @keyframes tick {

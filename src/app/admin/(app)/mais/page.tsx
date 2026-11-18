@@ -13,6 +13,7 @@ import { IconSeta } from "@/components/icons";
 const SECOES = [
   { href: "/admin/ao-vivo", t: "Pedidos ao vivo", d: "Pedidos do site chegando, com alarme" },
   { href: "/admin/mais/loja", t: "Loja no site", d: "Abrir, fechar e horários" },
+  { href: "/admin/mais/fidelidade", t: "Fidelidade", d: "Selo do Cantinho: clientes, selos, prêmios e ajustes" },
   { href: "/admin/mais/estoque", t: "Estoque de potes", d: "Potes e sacos, compras, ajustes e o que cada produto leva" },
   { href: "/admin/mais/custo", t: "Custo e preço", d: "Quanto custa cada porção e o lucro por canal" },
   { href: "/admin/mais/producoes", t: "Produções", d: "Nota do mercado e custo por kg" },

@@ -83,6 +83,13 @@ describe("pedido", () => {
     expect(t.taxaPagamento).toBe(271); // 3,09% de 8780 = 271,30
   });
 
+  it("sem pote: a embalagem sai do custo", () => {
+    const com = calcPedido(ped({}));
+    const sem = calcPedido(ped({ semPote: true }));
+    expect(com.custo - sem.custo).toBe(2 * prod("feijoada-individual").embalagem);
+    expect(sem.cobrado).toBe(com.cobrado);
+  });
+
   it("baixa de estoque só das bebidas", () => {
     const itens = [ind("whatsapp", 2), itemDoProduto(prod("coca-lata"), "whatsapp", 3, custoKg, p), itemDoProduto(prod("coca-lata"), "whatsapp", 1, custoKg, p)];
     expect(baixaEstoque(itens)).toEqual({ "coca-lata": 4 });

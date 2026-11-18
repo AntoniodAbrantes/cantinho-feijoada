@@ -4,7 +4,8 @@ import { diaLocal, fimDeSemana } from "../format";
 import { horariosAgenda, lojaAberta } from "../loja";
 import { panela } from "../pedido";
 import { cardapioSite, type DadosSite } from "../site";
-import type { Loja, Pedido, Premissas, Producao, Produto } from "../types";
+import { TEMPO_PADRAO } from "../tempo";
+import type { Loja, Pedido, Premissas, Producao, Produto, TempoEntrega } from "../types";
 
 const FECHADA: Loja = { modo: "fechada", horarios: {} };
 const lista = <T>(s: FirebaseFirestore.QuerySnapshot) => s.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
@@ -18,11 +19,12 @@ export async function carregarSite(agora = Date.now()): Promise<DadosSite> {
   // Fechada agora: o cardápio vale pro próximo dia que dá pra agendar.
   // shortcut: agenda que pula pra outro fim de semana usa o estoque do primeiro; a rota do pedido confere o certo.
   const dia = aberta ? hoje : (horariosAgenda(loja, agora)[0]?.dia ?? hoje);
-  const [produtos, premissas, producoes, pedidos] = await Promise.all([
+  const [produtos, premissas, producoes, pedidos, tempo] = await Promise.all([
     db.collection("produtos").get().then((s) => lista<Produto>(s)),
     db.doc("config/premissas").get().then((s) => s.data() as Premissas),
     db.collection("producoes").orderBy("data", "desc").limit(10).get().then((s) => lista<Producao>(s)),
     db.collection("pedidos").where("fimDeSemana", "==", fimDeSemana(dia)).get().then((s) => lista<Pedido>(s)),
+    db.doc("config/tempo").get().then((s) => (s.data() as TempoEntrega | undefined) ?? TEMPO_PADRAO),
   ]);
   // Pedido novo, ainda não aceito, já reserva feijoada: não dá pra vender a mesma panela duas vezes.
   const restaG = panela(producoes, pedidos, premissas, dia, (s) => s !== "cancelado")?.resta ?? 0;
@@ -33,5 +35,6 @@ export async function carregarSite(agora = Date.now()): Promise<DadosSite> {
     entrega: entregaSite(),
     loja,
     aberta,
+    tempo,
   };
 }

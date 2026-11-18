@@ -2,13 +2,14 @@
 import Link from "next/link";
 import { brl, dataBr, kg, nomeDia, pctFmt } from "@/lib/format";
 import { porCanal, porProduto, porDia, resumo } from "@/lib/painel";
-import { abaixoDoMinimo, nomeCurto } from "@/lib/estoque";
+import { abaixoDoMinimo, nomeCurto, potesUsados } from "@/lib/estoque";
 import { panela } from "@/lib/pedido";
 import { useStore } from "@/lib/store";
 import { Botao, CANAIS, CANAL, Dinheiro, Esqueleto, Estimativa, EtiquetaCanal, Linha, Painel, Rotulo, Selo, Vazio, cx } from "@/components/ui";
-import { ehSimples, type Pedido } from "@/lib/types";
+import { conta, ehSimples, type Pedido } from "@/lib/types";
 import { FiltroPeriodo, NOME_PERIODO, usePeriodo } from "@/components/periodo";
 import { IconSeta } from "@/components/icons";
+import { ControleTempo } from "@/components/tempo-admin";
 
 export default function PainelPage() {
   const { pedidos, compras, premissas, carregando } = useStore();
@@ -30,6 +31,8 @@ export default function PainelPage() {
           </p>
         </div>
       </header>
+
+      {!carregando && <ControleTempo />}
 
       <AlertaPotes />
 
@@ -98,6 +101,8 @@ export default function PainelPage() {
               <Dinheiro valor={r.lucro + r.maoDeObra} className="text-lucro" />
             </Linha>
           </Painel>
+
+          <Potes pedidos={lista} hoje={hoje} />
 
           <Barras titulo="O que mais saiu" itens={porProduto(lista).map((p) => ({ id: p.id, rotulo: p.nome, valor: p.qtd, texto: `${p.qtd}` }))} />
           {periodo !== "hoje" && (
@@ -175,6 +180,26 @@ function Producao({ pedidos, hoje }: { pedidos: Pedido[]; hoje: string }) {
       <p className="text-sm text-creme-3">
         Produção de {dataBr(prod.producao.data)} · {brl(Math.round(prod.custoKg))}/kg
       </p>
+    </Painel>
+  );
+}
+
+// Potes que os pedidos do período usaram (pedido marcado "Usou pote? Não" fica fora).
+function Potes({ pedidos, hoje }: { pedidos: Pedido[]; hoje: string }) {
+  const { produtos, embalagens, estoque } = useStore();
+  if (!estoque) return null;
+  const usados = potesUsados(pedidos, produtos, estoque, hoje);
+  const total = Object.values(usados).reduce((s, q) => s + q, 0);
+  const semPote = pedidos.filter((p) => p.semPote && conta(p.status)).length;
+  return (
+    <Painel>
+      <Rotulo className="mb-1">Potes usados · {total}</Rotulo>
+      {embalagens.filter((e) => usados[e.id]).map((e) => (
+        <Linha key={e.id} rotulo={nomeCurto(e)}>
+          <span className="num">{usados[e.id]}</span>
+        </Linha>
+      ))}
+      {semPote > 0 && <p className="mt-2 text-sm text-creme-3">{semPote === 1 ? "1 pedido sem pote" : `${semPote} pedidos sem pote`}</p>}
     </Painel>
   );
 }

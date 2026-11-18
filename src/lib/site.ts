@@ -1,7 +1,7 @@
 // Regras do pedido pelo site. As mesmas funções rodam no navegador (para avisar cedo) e na rota do pedido (que decide).
 import { baixaEstoque } from "./calc";
 import type { EntregaSite, Ponto } from "./entrega";
-import type { Categoria, Endereco, FormaPagamento, Loja, Pedido, Produto } from "./types";
+import type { Categoria, Endereco, FormaPagamento, Loja, Pedido, Produto, TempoEntrega } from "./types";
 
 // shortcut: limites propostos no plano, ainda a confirmar com o Antonio.
 export const LIMITE_ITEM = 10;
@@ -24,6 +24,7 @@ export interface DadosSite {
   entrega: EntregaSite;
   loja: Loja;
   aberta: boolean;
+  tempo: TempoEntrega; // o site acompanha ao vivo (config/tempo); este é o da hora em que a página foi feita
 }
 
 // Produtos marcados para o site, com o preço do WhatsApp (venda direta, sem comissão).
@@ -84,6 +85,7 @@ export interface DadosCliente {
   trocoPara: number; // 0 = sem troco
   obs: string;
   agendado?: number; // começo da faixa agendada (epoch ms); sem = pra agora
+  premio?: { escolhidoId: string }; // usar o presente do Selo do Cantinho neste pedido (a rota confere)
 }
 export type CampoCliente = "nome" | "telefone" | "rua" | "numero" | "bairro" | "complemento" | "referencia" | "cep" | "cidade" | "pagamento" | "trocoPara" | "obs";
 

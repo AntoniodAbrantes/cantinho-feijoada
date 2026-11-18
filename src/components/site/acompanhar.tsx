@@ -1,10 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getApps, initializeApp } from "firebase/app";
-import { connectFirestoreEmulator, doc, getFirestore, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { Selo, cx } from "@/components/ui";
-import { config, emulador } from "@/lib/firebase-config";
+import { dbSite } from "@/lib/firebase-site";
 import { LINK_AVALIACAO_GOOGLE, PIX, linkWhatsapp } from "@/lib/contato";
 import { taxaTexto } from "@/lib/entrega";
 import { textoHorario } from "@/lib/loja";
@@ -14,6 +13,8 @@ import { NOME_PAGAMENTO, type PagamentoSite } from "@/lib/site";
 import type { StatusPedido } from "@/lib/types";
 import { IconEstrela } from "@/components/icons";
 import { botaoPrincipal } from "./estilo";
+import { TempoEstimado, useTempo } from "./tempo";
+import { CartaoSelos, ComoFunciona } from "@/components/selos";
 
 // O que a rota de pedido grava em rastreio/{token}: sem telefone, endereço nem custo.
 interface Rastreio {
@@ -30,15 +31,9 @@ interface Rastreio {
   previsaoEm?: number;
   agendadoPara?: number;
   avaliacao?: { nota: number };
+  selo?: { antes: number; meta: number; resgate: boolean; ganha: boolean };
 }
 
-// App "site" separado do sistema: sem login e sem cache offline.
-function db() {
-  const primeira = !getApps().some((a) => a.name === "site");
-  const d = getFirestore(primeira ? initializeApp(config, "site") : getApps().find((a) => a.name === "site")!);
-  if (primeira && emulador) connectFirestoreEmulator(d, "127.0.0.1", 8080);
-  return d;
-}
 
 const PASSOS: { status: StatusPedido; t: string }[] = [
   { status: "novo", t: "Recebido" },
@@ -61,7 +56,7 @@ export function Acompanhar({ token }: { token: string }) {
   useEffect(
     () =>
       onSnapshot(
-        doc(db(), "rastreio", token),
+        doc(dbSite(), "rastreio", token),
         (s) => {
           setErro(false);
           setR(s.exists() ? (s.data() as Rastreio) : null);
@@ -71,6 +66,7 @@ export function Acompanhar({ token }: { token: string }) {
     [token],
   );
 
+  const tempo = useTempo();
   const passo = r ? PASSOS.findIndex((p) => p.status === r.status) : -1;
   const zap = linkWhatsapp(r ? `Oi! Sobre o meu pedido nº ${r.numero}.` : "Oi! Fiz um pedido pelo site.");
 
@@ -111,6 +107,10 @@ export function Acompanhar({ token }: { token: string }) {
               </p>
             )}
           </section>
+
+          {r.status === "novo" && !r.agendadoPara && <TempoEstimado tempo={tempo} depois />}
+
+          {r.selo && r.status !== "cancelado" && <SeloDoPedido token={token} s={r.selo} entregue={r.status === "entregue"} />}
 
           {r.status !== "cancelado" && (
             <ol className="flex flex-col gap-3" aria-label="Andamento do pedido">
@@ -270,6 +270,40 @@ function Avaliar({ token, feita }: { token: string; feita?: number }) {
         </>
       )}
       {erro && <p role="alert" className="font-semibold text-prejuizo">{erro}</p>}
+    </section>
+  );
+}
+
+// O selo novo carimba no cartão na primeira vez que o cliente abre a confirmação.
+function SeloDoPedido({ token, s, entregue }: { token: string; s: NonNullable<Rastreio["selo"]>; entregue: boolean }) {
+  const [animar, setAnimar] = useState(false);
+  const novo = s.ganha && s.antes < s.meta;
+  useEffect(() => {
+    if (!novo) return;
+    const k = `cantinho:carimbo:${token}`;
+    try {
+      if (localStorage.getItem(k)) return;
+      localStorage.setItem(k, "1");
+    } catch {}
+    setAnimar(true);
+  }, [novo, token]);
+  const selos = s.antes + (novo ? 1 : 0);
+  const frase = s.resgate
+    ? "Presente resgatado! Seu cartão recomeça agora, visse?"
+    : !s.ganha
+      ? "Esse pedido não tem feijoada, então não vale selo."
+      : !novo
+        ? "Seu presente continua guardado esperando o próximo pedido."
+        : entregue
+          ? selos === s.meta ? "Cartão completo! O presente vem no próximo pedido." : "Selo valendo! Obrigado pela preferência."
+          : selos === s.meta
+            ? "Mais um selo pra conta! Com ele o cartão fecha: quando o pedido for entregue, seu presente tá liberado."
+            : "Mais um selo pra conta! Ele vale quando o pedido for entregue.";
+  return (
+    <section className="flex flex-col gap-3">
+      <CartaoSelos selos={selos} meta={s.meta} carimba={animar ? s.antes : undefined} />
+      <p className="text-xl leading-snug">{frase}</p>
+      <ComoFunciona meta={s.meta} />
     </section>
   );
 }

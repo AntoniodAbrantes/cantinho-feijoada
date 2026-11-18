@@ -55,7 +55,7 @@ export function calcPedido(ped: PedidoBase) {
     if (ped.pagamento === "ifood_online") taxasIfood += pct(cobrado, ped.taxas.onlineBp);
   }
   const taxaPagamento = pct(cobrado, ped.taxas.pagamentoBp);
-  const custo = ped.itens.reduce((s, i) => s + i.qtd * i.custo, 0) + ped.custoEntrega;
+  const custo = ped.itens.reduce((s, i) => s + i.qtd * (i.custo - (ped.semPote ? (i.embalagem ?? 0) : 0)), 0) + ped.custoEntrega;
   const recebido = cobrado - taxasIfood - taxaPagamento;
   const lucro = recebido - custo;
   const maoDeObra = ped.itens.reduce((s, i) => s + i.qtd * i.maoDeObra, 0);
@@ -84,6 +84,7 @@ export function itemDoProduto(produto: Produto, canal: Canal, qtd: number, custo
     preco: canal === "ifood" ? produto.precoIfood : produto.precoWhatsapp,
     custo: c.total,
     maoDeObra: c.maoDeObra,
+    embalagem: c.embalagem,
     pesoG: produto.pesoFeijoadaG,
   };
 }

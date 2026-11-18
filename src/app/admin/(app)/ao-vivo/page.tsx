@@ -11,6 +11,7 @@ import { BotaoZap, Entrega, zapCliente } from "@/components/entrega";
 import { Texto, Valor } from "@/components/campos";
 import { Folha } from "@/components/folha";
 import { AvisoCelular } from "@/components/aviso-celular";
+import { SelosDoPedido } from "@/components/selos-admin";
 import { Botao, Chips, Painel, Vazio } from "@/components/ui";
 
 // Tela pra deixar aberta durante o almoço: pedido do site chega, toca até alguém aceitar ou recusar.
@@ -81,15 +82,16 @@ export default function AoVivo() {
 }
 
 // Quanto falta pro pedido chegar no cliente, escolhido no aceite. Vira "chega por volta de 12:40" pra ele.
-const PRAZOS = ["30", "45", "60", "75"] as const;
-type Prazo = (typeof PRAZOS)[number];
+// Começa no fim da faixa do painel (Entrega em 40–60 min → 60).
+const PRAZOS = [30, 45, 60, 75, 90];
 
 function CartaoNovo({ p }: { p: Pedido }) {
-  const { mudarStatus, avisar } = useStore();
+  const { mudarStatus, avisar, tempo } = useStore();
+  const prazos = [...new Set([...PRAZOS, tempo.max])].sort((a, b) => a - b).map(String);
   const [taxa, setTaxa] = useState(p.taxaEntrega);
   const [recusar, setRecusar] = useState(false);
   const [motivo, setMotivo] = useState("");
-  const [prazo, setPrazo] = useState<Prazo>("45");
+  const [prazo, setPrazo] = useState(String(tempo.max));
   const total = calcPedido({ ...p, taxaEntrega: taxa }).cobrado;
   const novaTaxa = taxa !== p.taxaEntrega ? { taxaEntrega: taxa } : undefined;
 
@@ -118,7 +120,7 @@ function CartaoNovo({ p }: { p: Pedido }) {
       <Entrega p={p} />
       <ul className="flex flex-col gap-1 border-y border-linha py-3">
         {p.itens.map((i) => (
-          <li key={i.produtoId} className="flex justify-between gap-3 text-lg">
+          <li key={`${i.produtoId}${i.brinde ? "-presente" : ""}`} className="flex justify-between gap-3 text-lg">
             <span>
               {i.qtd}× {i.nome}
             </span>
@@ -127,6 +129,7 @@ function CartaoNovo({ p }: { p: Pedido }) {
         ))}
       </ul>
       {p.obs && <p className="rounded-[var(--radius-ctl)] bg-tisna p-3">Recado: {p.obs}</p>}
+      <SelosDoPedido p={p} />
       <div className="flex flex-col gap-1">
         <Valor rotulo="Taxa de entrega" valor={taxa} onChange={setTaxa} />
         <p className="text-sm text-creme-3">A taxa já vem calculada pela distância. Se combinar outra no WhatsApp, muda aqui antes de aceitar.</p>
@@ -138,7 +141,7 @@ function CartaoNovo({ p }: { p: Pedido }) {
       {!p.agendadoPara && (
         <div className="flex flex-col gap-2">
           <span className="text-sm font-semibold uppercase tracking-wider text-creme-3">Chega na casa do cliente em</span>
-          <Chips rotulo="Chega na casa do cliente em" valor={prazo} onChange={setPrazo} opcoes={PRAZOS.map((v) => ({ v, t: `${v} min` }))} />
+          <Chips rotulo="Chega na casa do cliente em" valor={prazo} onChange={setPrazo} opcoes={prazos.map((v) => ({ v, t: `${v} min` }))} />
         </div>
       )}
       <Botao variante="principal" onClick={aceitar} className="min-h-16 text-2xl">

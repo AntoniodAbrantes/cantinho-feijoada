@@ -5,12 +5,13 @@ import { adminDb } from "./admin";
 import { ENTREGA } from "@/data/entrega";
 import { calcularEntrega, rotaOsrm, type Config, type Rota } from "./entrega";
 import { calcPedido, itemDoProduto } from "../calc";
+import { FIDELIDADE_PADRAO, cartao, itemPremio, normalizarTelefone, tamanhoDoPedido } from "../fidelidade";
 import { diaLocal, fimDeSemana } from "../format";
 import { horariosAgenda, lojaAberta } from "../loja";
 import { panela, taxasDoMomento } from "../pedido";
 import type { Ponto } from "../entrega";
 import { cardapioSite, erroCarrinho, errosCliente, type Carrinho, type DadosCliente } from "../site";
-import type { Loja, Pedido, Premissas, Producao, Produto } from "../types";
+import type { AjusteSelo, ConfigFidelidade, Loja, Pedido, Premissas, Producao, Produto } from "../types";
 
 // shortcut: limites propostos no plano, ainda a confirmar com o Antonio.
 export const LIMITE_TELEFONE_HORA = 3;
@@ -39,12 +40,14 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
   const l = c.local as Record<string, unknown> | undefined;
   if (l !== undefined && (typeof l !== "object" || l === null || typeof l.lat !== "number" || typeof l.lng !== "number")) throw invalido;
   if (c.agendado !== undefined && !Number.isSafeInteger(c.agendado)) throw invalido;
+  const pr = c.premio as Record<string, unknown> | undefined;
+  if (pr !== undefined && (typeof pr !== "object" || pr === null || !ehTexto(pr.escolhidoId, 60))) throw invalido;
   const t = (v: unknown) => (v as string).trim();
   return {
     itens: Object.fromEntries(pares) as Carrinho,
     cliente: {
       nome: t(c.nome),
-      telefone: c.telefone as string,
+      telefone: normalizarTelefone(c.telefone as string),
       pagamento: c.pagamento as DadosCliente["pagamento"],
       trocoPara: c.trocoPara,
       obs: t(c.obs),
@@ -55,11 +58,12 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
       },
       ...(l && { local: { lat: l.lat as number, lng: l.lng as number } }),
       ...(c.agendado !== undefined && { agendado: c.agendado as number }),
+      ...(pr && { premio: { escolhidoId: pr.escolhidoId as string } }),
     },
   };
 }
 
-const hash = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 32);
+export const hash = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 32);
 const lista = <T>(s: FirebaseFirestore.QuerySnapshot) => s.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
 
 // Taxa por distância: calculada aqui, antes da transação (chama o OSRM). Fora da área não grava.
@@ -84,7 +88,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
   const entrega = await entregaDoPedido(cliente.local, config, rota);
 
   return db.runTransaction(async (t) => {
-    const [lojaS, premS, prodS, producoesS, pedidosS, telS, ipS, contS] = await Promise.all([
+    const [lojaS, premS, prodS, producoesS, pedidosS, telS, ipS, contS, fidS, cliS, doTelS] = await Promise.all([
       t.get(db.doc("config/loja")),
       t.get(db.doc("config/premissas")),
       t.get(db.collection("produtos")),
@@ -93,6 +97,9 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       t.get(limTel),
       t.get(limIp),
       t.get(contador),
+      t.get(db.doc("config/fidelidade")),
+      t.get(db.doc(`fidelidade/${cliente.telefone}`)),
+      t.get(db.collection("pedidos").where("telefone", "==", cliente.telefone)),
     ]);
 
     const loja = lojaS.data() as Loja | undefined;
@@ -113,12 +120,21 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
     const pan = panela(producoes, ativos, prem, dia, () => true);
     const restaG = pan?.resta ?? 0;
     const cardapio = cardapioSite(produtos, ativos, restaG);
-    const erro = erroCarrinho(itens, cardapio, restaG);
+
+    // Selo do Cantinho: o presente só entra se o cartão (lido aqui, na transação) tiver prêmio liberado.
+    const fid = (fidS.data() as ConfigFidelidade | undefined) ?? FIDELIDADE_PADRAO;
+    const card = cartao(lista<Pedido>(doTelS), (cliS.get("ajustes") as AjusteSelo[] | undefined) ?? [], produtos, fid);
+    const brinde = cliente.premio ? fid.ativo && itemPremio(card, cliente.premio.escolhidoId, produtos, "site", pan?.custoKg ?? 0, prem) : null;
+    if (cliente.premio && !brinde) throw new Recusa(409, "Esse presente não tá mais disponível. Volta um passo e confere.");
+    // O presente também sai da panela: entra na conta do estoque como mais uma unidade.
+    const comBrinde = brinde ? { ...itens, [brinde.item.produtoId]: (itens[brinde.item.produtoId] ?? 0) + 1 } : itens;
+    const erro = erroCarrinho(comBrinde, cardapio, restaG);
     if (erro) throw new Recusa(409, erro);
 
     const linhas = cardapio
       .filter((i) => itens[i.id] > 0)
       .map((i) => itemDoProduto(produtos.find((p) => p.id === i.id)!, "site", itens[i.id], pan?.custoKg ?? 0, prem));
+    if (brinde) linhas.push(brinde.item);
     const base = {
       canal: "site" as const,
       itens: linhas,
@@ -154,6 +170,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       ...(agendado !== undefined && { agendadoPara: agendado }),
       trocoPara,
       rastreio,
+      ...(brinde && { fidelidade: brinde.resgate }),
     };
     // O que o cliente vê na página de acompanhamento: sem custo, lucro, telefone nem endereço.
     const publico = {
@@ -167,6 +184,8 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       pagamento: cliente.pagamento,
       trocoPara,
       ...(agendado !== undefined && { agendadoPara: agendado }),
+      // Cartão de selos da confirmação: quantos tinha e se este pedido carimba mais um (vale quando for entregue).
+      ...(fid.ativo && { selo: { antes: brinde ? 0 : card.selos, meta: card.meta, resgate: !!brinde, ganha: !brinde && tamanhoDoPedido({ itens: linhas }) > 0 } }),
     };
 
     t.create(ref, pedido);

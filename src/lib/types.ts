@@ -133,6 +133,8 @@ export interface ItemPedido {
   custo: number; // unitário, já com embalagem e mão de obra
   maoDeObra: number; // unitário, para "fica com a família"
   pesoG: number; // feijoada por unidade
+  embalagem?: number; // unitário, já dentro do custo; sai do custo se o pedido não usou pote
+  brinde?: boolean; // feijoada de presente da fidelidade: preço = só a diferença da troca de tamanho
 }
 
 export interface Desconto {
@@ -156,6 +158,7 @@ export interface PedidoBase {
   custoEntrega: number;
   pagamento: FormaPagamento;
   taxas: TaxasCongeladas;
+  semPote?: boolean; // "Usou pote?" = Não: nenhum pote sai do estoque nem entra no custo
 }
 
 export interface Pedido extends PedidoBase {
@@ -181,6 +184,47 @@ export interface Pedido extends PedidoBase {
   agendadoPara?: number; // pedido do site agendado: começo da faixa de 30 min
   avaliacao?: Avaliacao;
   motivoRecusa?: string;
+  // Encomenda: lembrete da véspera (disparado e visto ficam salvos pra não repetir)
+  lembreteEm?: number;
+  lembreteVistoEm?: number;
+  fidelidade?: Resgate; // pedido que resgatou o presente do Selo do Cantinho (não ganha selo)
+}
+
+// Selo do Cantinho: a cada `meta` pedidos entregues, uma feijoada de presente.
+// "menor": o menor tamanho entre os pedidos do cartão; "maior": o maior.
+export interface ConfigFidelidade {
+  ativo: boolean;
+  meta: number;
+  regra: "menor" | "maior";
+}
+
+// O que o pedido de resgate guarda: o prêmio ganho, o que o cliente levou e quanto pagou na troca.
+export interface Resgate {
+  premioId: string;
+  premioNome: string;
+  escolhidoId: string;
+  escolhidoNome: string;
+  troca: number; // centavos; 0 = levou o tamanho ganho
+}
+
+// fidelidade/{telefone}: ajustes manuais de selo (+ ou −), com motivo.
+export interface AjusteSelo {
+  em: number;
+  qtd: number;
+  motivo: string;
+}
+export interface ClienteFidelidade {
+  id: string; // telefone normalizado
+  ajustes: AjusteSelo[];
+}
+
+// config/tempo: tempo estimado de entrega que o site mostra. Histórico em tempoHistorico.
+export type ModoTempo = "normal" | "movimentado" | "lotado" | "personalizado";
+export interface TempoEntrega {
+  modo: ModoTempo;
+  min: number; // minutos
+  max: number;
+  em: number;
 }
 
 // Nota do cliente do site depois da entrega.

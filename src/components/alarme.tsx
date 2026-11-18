@@ -1,11 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { calcPedido } from "@/lib/calc";
 import { fb } from "@/lib/firebase";
-import { brl } from "@/lib/format";
+import { brl, dataBr, diaLocal, horaLocal, nomeDia, somaDias } from "@/lib/format";
+import { lembretes } from "@/lib/pedido";
+import { useStore } from "@/lib/store";
 import type { Pedido } from "@/lib/types";
 
 // Alarme dos pedidos do site: vale em qualquer tela do sistema, não só na de pedidos ao vivo.
@@ -22,6 +24,7 @@ interface Alarme {
   ativar: () => Promise<void>;
   testar: () => void;
   ajustar: (a: { som?: Som; volume?: number }) => void;
+  caixa: () => void; // "cha-ching" ao lançar pedido: chamar dentro do toque, que o navegador deixa tocar
 }
 const Ctx = createContext<Alarme | null>(null);
 export const useAlarme = () => useContext(Ctx)!;
@@ -29,12 +32,16 @@ export const useAlarme = () => useContext(Ctx)!;
 // Criados no primeiro uso (só no navegador) e reaproveitados entre telas.
 let audios: { alarme: HTMLAudioElement; queda: HTMLAudioElement } | null = null;
 const el = () => (audios ??= { alarme: Object.assign(new Audio(), { loop: true }), queda: Object.assign(new Audio("/sons/conexao.wav"), { loop: true }) });
+let somCaixa: HTMLAudioElement | null = null;
 
-async function notificar(p: Pedido) {
+const resumoItens = (p: Pedido) => p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", ");
+const ondeEntrega = (p: Pedido) => (p.endereco ? [`${p.endereco.rua}, ${p.endereco.numero}`, p.endereco.complemento, p.endereco.bairro].filter(Boolean).join(" · ") : p.bairro);
+const quando = (p: Pedido, hoje = diaLocal()) => (p.dia === hoje ? "hoje" : p.dia === somaDias(hoje, 1) ? "amanhã" : `${nomeDia(p.dia)}, ${dataBr(p.dia)}`);
+
+async function notificar(titulo: string, body: string, tag: string) {
   navigator.vibrate?.([500, 200, 500]);
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-  const titulo = `Pedido novo${p.numero ? ` nº ${p.numero}` : ""}`;
-  const opcoes = { body: `${p.cliente} · ${brl(calcPedido(p).cobrado)}`, tag: p.id, icon: "/marca/icone-192.png" };
+  const opcoes = { body, tag, icon: "/marca/icone-192.png" };
   try {
     // No Android só o service worker mostra notificação; no computador serve a direta.
     const sw = await navigator.serviceWorker?.getRegistration("/admin");
@@ -78,7 +85,7 @@ export function AlarmeProvider({ children }: { children: React.ReactNode }) {
         const lista = s.docs.map((d) => ({ ...(d.data() as Omit<Pedido, "id">), id: d.id })).sort((a, b) => a.criadoEm - b.criadoEm);
         setNovos(lista);
         for (const p of lista) {
-          if (!vistos.has(p.id) && !primeira) notificar(p);
+          if (!vistos.has(p.id) && !primeira) notificar(`Pedido novo${p.numero ? ` nº ${p.numero}` : ""}`, `${p.cliente} · ${brl(calcPedido(p).cobrado)}`, p.id);
           vistos.add(p.id);
         }
         primeira = false;
@@ -87,8 +94,31 @@ export function AlarmeProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  // Encomenda da véspera: dispara uma vez só (fica salvo no pedido); se o sistema estava fechado, dispara ao abrir.
+  // Toca o mesmo alarme até marcar "visto", mas só no aparelho que disparou.
+  const { pedidos, carregando, lote } = useStore();
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setAgora(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const avisos = useMemo(() => (carregando ? [] : lembretes(pedidos, agora)), [carregando, pedidos, agora]);
+  const disparados = useRef(new Set<string>());
+  const [soando, setSoando] = useState<string[]>([]);
+  useEffect(() => {
+    const novas = avisos.filter((p) => !p.lembreteEm && !disparados.current.has(p.id));
+    if (!novas.length) return;
+    for (const p of novas) {
+      disparados.current.add(p.id);
+      notificar(`Encomenda pra ${quando(p)}${p.agendadoPara ? ` às ${horaLocal(p.agendadoPara)}` : ""}`, [p.cliente, resumoItens(p), ondeEntrega(p)].filter(Boolean).join(" · "), `lembrete-${p.id}`);
+    }
+    lote(novas.map((p) => ({ caminho: `pedidos/${p.id}`, dados: { lembreteEm: Date.now() } })));
+    setSoando((s) => [...s, ...novas.map((p) => p.id)]);
+  }, [avisos, lote]);
+  const lembrando = avisos.some((p) => soando.includes(p.id));
+
   const semConexao = conectado === false || (conectado !== null && !online);
-  const tocando = ligado && (novos.length > 0 || testando) ? "alarme" : ligado && semConexao ? "queda" : null;
+  const tocando = ligado && (novos.length > 0 || testando || lembrando) ? "alarme" : ligado && semConexao ? "queda" : null;
 
   useEffect(() => {
     const a = el();
@@ -189,9 +219,17 @@ export function AlarmeProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const caixa = useCallback(() => {
+    somCaixa ??= new Audio("/sons/caixa.wav");
+    somCaixa.volume = pref.volume;
+    somCaixa.currentTime = 0;
+    somCaixa.play().catch(() => {}); // bloqueado ou sem arquivo: o pedido salva igual
+  }, [pref.volume]);
+
   return (
-    <Ctx.Provider value={{ novos, ligado, semConexao, som: pref.som, volume: pref.volume, ativar, testar, ajustar }}>
+    <Ctx.Provider value={{ novos, ligado, semConexao, som: pref.som, volume: pref.volume, ativar, testar, ajustar, caixa }}>
       <FaixaNovos />
+      <EncomendasAmanha avisos={avisos} onVisto={(p) => lote([{ caminho: `pedidos/${p.id}`, dados: { lembreteVistoEm: Date.now() } }])} />
       {children}
       {novos.length > 0 && <div aria-hidden className="pointer-events-none fixed inset-0 z-[45] animate-piscar bg-milho" />}
     </Ctx.Provider>
@@ -207,5 +245,34 @@ function FaixaNovos() {
     <Link href="/admin/ao-vivo" role="alert" className="sticky top-0 z-40 block bg-milho px-4 pb-3 pt-[max(12px,env(safe-area-inset-top))] text-lg font-semibold text-carvao">
       {novos.length === 1 ? "1 pedido novo do site." : `${novos.length} pedidos novos do site.`} {ligado ? "Toca pra aceitar." : "Som desligado: toca aqui pra ver e ativar."}
     </Link>
+  );
+}
+
+// Fica em todas as telas até marcar "visto" (salvo no pedido, vale pra todos os aparelhos).
+function EncomendasAmanha({ avisos, onVisto }: { avisos: Pedido[]; onVisto: (p: Pedido) => void }) {
+  if (!avisos.length) return null;
+  const amanha = avisos.every((p) => p.dia !== diaLocal());
+  return (
+    <section role="alert" aria-label="Encomendas" className="border-b-2 border-milho bg-brasa px-4 pb-3 pt-[max(12px,env(safe-area-inset-top))]">
+      <p className="font-display text-xl uppercase text-milho">{amanha ? "Encomendas de amanhã" : "Encomendas"}</p>
+      <ul className="mt-2 flex flex-col gap-2">
+        {avisos.map((p) => (
+          <li key={p.id} className="flex items-center gap-3 rounded-[var(--radius-card)] bg-carvao p-3">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-sm font-semibold text-milho">
+                {quando(p)} · {p.agendadoPara ? `por volta das ${horaLocal(p.agendadoPara)}` : "sem horário"}
+              </span>
+              <span className="font-semibold">{p.cliente || "Cliente sem nome"}</span>
+              <span className="text-creme-2">{resumoItens(p)}</span>
+              {ondeEntrega(p) && <span className="text-sm text-creme-3">{ondeEntrega(p)}</span>}
+              {p.obs && <span className="text-sm text-creme-3">{p.obs}</span>}
+            </span>
+            <button onClick={() => onVisto(p)} className="min-h-12 shrink-0 rounded-[var(--radius-ctl)] bg-milho px-4 font-semibold text-carvao active:scale-[0.96]">
+              Visto
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

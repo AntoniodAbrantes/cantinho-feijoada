@@ -7,7 +7,9 @@ import { chave, consumo, diferenca, faltando, nomeCurto } from "./estoque";
 import { diaLocal } from "./format";
 import { sincronizarPotes } from "./potes";
 import { fb } from "./firebase";
-import { conta, type Baixa, type ConfigEstoque, type Embalagem, type Loja, type Cenario, type Compra, type Pedido, type Premissas, type Producao, type Produto, type StatusPedido } from "./types";
+import { FIDELIDADE_PADRAO } from "./fidelidade";
+import { TEMPO_PADRAO } from "./tempo";
+import { conta, type ClienteFidelidade, type ConfigFidelidade, type TempoEntrega, type Baixa, type ConfigEstoque, type Embalagem, type Loja, type Cenario, type Compra, type Pedido, type Premissas, type Producao, type Produto, type StatusPedido } from "./types";
 
 // set faz merge; delete apaga. Tudo num lote só: atômico e funciona offline.
 export type Op = { caminho: string; dados?: object; apagar?: boolean };
@@ -17,7 +19,7 @@ export const novoId = (colecao: string) => doc(collection(fb().db, colecao)).id;
 export type Extra = Partial<Pick<Pedido, "taxaEntrega" | "motivoRecusa" | "previsaoEm">>;
 
 // O que dá pra mudar num pedido já lançado (data, canal, status e dados do site ficam).
-export type Edicao = Pick<Pedido, "itens" | "desconto" | "taxaEntrega" | "custoEntrega" | "pagamento" | "taxas" | "cliente" | "bairro" | "obs">;
+export type Edicao = Pick<Pedido, "itens" | "desconto" | "taxaEntrega" | "custoEntrega" | "pagamento" | "taxas" | "cliente" | "bairro" | "obs" | "semPote" | "telefone">;
 
 type Aviso = { id: number; texto: string; desfazer?: () => void; erro?: boolean };
 type Alerta = { id: number; texto: string };
@@ -32,6 +34,9 @@ interface Dados {
   embalagens: Embalagem[];
   baixas: Baixa[];
   estoque: ConfigEstoque | null; // null = estoque de potes ainda não começou
+  fidelidade: ClienteFidelidade[]; // só quem teve ajuste manual de selo
+  cfgFidelidade: ConfigFidelidade;
+  tempo: TempoEntrega;
 }
 
 interface Store extends Omit<Dados, "premissas"> {
@@ -50,8 +55,8 @@ interface Store extends Omit<Dados, "premissas"> {
 }
 
 const Ctx = createContext<Store | null>(null);
-const vazio: Dados = { produtos: [], premissas: null, producoes: [], pedidos: [], compras: [], cenarios: [], embalagens: [], baixas: [], estoque: null };
-const COLECOES = 9;
+const vazio: Dados = { produtos: [], premissas: null, producoes: [], pedidos: [], compras: [], cenarios: [], embalagens: [], baixas: [], estoque: null, fidelidade: [], cfgFidelidade: FIDELIDADE_PADRAO, tempo: TEMPO_PADRAO };
+const COLECOES = 12;
 
 // Mexe no estoque das bebidas do pedido dentro do mesmo lote (atômico e funciona offline).
 function estoqueNoLote(b: WriteBatch, itens: Pedido["itens"], sinal: 1 | -1) {
@@ -131,6 +136,17 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
       ),
       lista("compras", query(c("compras"), orderBy("data", "desc"))),
       lista("cenarios", query(c("cenarios"), orderBy("ordem"))),
+      lista("fidelidade", query(c("fidelidade"))),
+      ...(["cfgFidelidade", "tempo"] as const).map((k) =>
+        onSnapshot(
+          doc(db, "config", k === "tempo" ? "tempo" : "fidelidade"),
+          (s) => {
+            setDados((d) => ({ ...d, [k]: s.data() ?? vazio[k] }));
+            pronto(k);
+          },
+          falhou,
+        ),
+      ),
       onSnapshot(
         doc(db, "config", "estoque"),
         (s) => {

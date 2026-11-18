@@ -23,6 +23,11 @@ service cloud.firestore {
       allow get: if true;
     }
 
+    // Tempo estimado de entrega: o site mostra ao vivo, sem login. Só o dono muda (regra geral acima).
+    match /config/tempo {
+      allow get: if true;
+    }
+
     match /pedidos/{id} {
       allow delete: if dono();
       allow create, update: if dono()

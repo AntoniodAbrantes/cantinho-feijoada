@@ -11,6 +11,7 @@ import { Confirmar, Folha } from "@/components/folha";
 import { BotaoZap, Entrega, zapCliente } from "@/components/entrega";
 import { useAlarme } from "@/components/alarme";
 import { FiltroPeriodo, NOME_PERIODO, usePeriodo } from "@/components/periodo";
+import { SelosDoPedido } from "@/components/selos-admin";
 
 const STATUS: Record<StatusPedido, string> = { novo: "Novo", feito: "Feito", saiu: "Saiu", entregue: "Entregue", cancelado: "Cancelado" };
 const PAGAMENTO: Record<string, string> = { pix: "Pix", dinheiro: "Dinheiro", debito: "Débito", credito: "Crédito", ifood_online: "Online iFood" };
@@ -40,7 +41,9 @@ export default function Pedidos() {
           data: dataBr(p.dia), hora: horaLocal(p.criadoEm), canal: CANAL[p.canal].nome, status: STATUS[p.status], cliente: p.cliente, bairro: p.bairro, itens: resumoItens(p),
           bruto: reais(t.bruto), desconto: reais(t.desconto), motivo_desconto: p.desconto.motivo, liquido: reais(t.liquido), taxa_entrega: reais(p.taxaEntrega),
           taxas_ifood: reais(t.taxasIfood), taxa_pagamento: reais(t.taxaPagamento), custo: reais(t.custo), lucro: reais(t.lucro), margem: pctFmt(t.margem, 1),
-          pagamento: PAGAMENTO[p.pagamento], obs: p.obs,
+          pagamento: PAGAMENTO[p.pagamento], usou_pote: p.semPote ? "Não" : "Sim", whatsapp: p.telefone ?? "",
+          resgate_fidelidade: p.fidelidade ? "Sim" : "", premio_original: p.fidelidade?.premioNome ?? "", premio_escolhido: p.fidelidade?.escolhidoNome ?? "",
+          valor_troca: p.fidelidade ? reais(p.fidelidade.troca) : "", custo_premio: reais(p.itens.filter((i) => i.brinde).reduce((s, i) => s + i.qtd * i.custo, 0)), obs: p.obs,
         };
       }),
     );
@@ -126,6 +129,8 @@ function Cartao({ p, onAbrir }: { p: Pedido; onAbrir: () => void }) {
         <span className="flex items-center gap-2 text-sm">
           <span className="num text-creme-3">{p.agendadoPara ? `entrega ${horaLocal(p.agendadoPara)}` : horaLocal(p.criadoEm)}</span>
           <EtiquetaCanal canal={p.canal} />
+          {p.fidelidade && <span className="text-xs font-bold uppercase tracking-wider text-milho">· presente</span>}
+          {p.semPote && <span className="text-xs font-bold uppercase tracking-wider text-creme-3">· sem pote</span>}
           {p.status !== "feito" && <span className={cx("text-xs font-bold uppercase tracking-wider", cancelado ? "text-prejuizo" : p.status === "novo" ? "text-milho" : "text-creme-3")}>· {STATUS[p.status]}</span>}
         </span>
         <span className="truncate">{p.cliente ? `${p.cliente} · ` : ""}{resumoItens(p)}</span>
@@ -169,13 +174,15 @@ function Detalhe({ p, onFechar }: { p?: Pedido; onFechar: () => void }) {
           )}
           <ul className="flex flex-col gap-1">
             {p.itens.map((i) => (
-              <li key={i.produtoId} className="flex justify-between gap-3">
+              <li key={`${i.produtoId}${i.brinde ? "-presente" : ""}`} className="flex justify-between gap-3">
                 <span>{i.qtd}× {i.nome}</span>
                 <span className="num text-creme-2">{brl(i.qtd * i.preco)}</span>
               </li>
             ))}
           </ul>
           {p.obs && <p className="rounded-[var(--radius-ctl)] bg-tisna p-3 text-creme-2">{p.obs}</p>}
+          <SelosDoPedido p={p} />
+          <Previsao p={p} />
           <Painel className="bg-carvao">
             <Linha rotulo="Bruto dos itens"><Dinheiro valor={t.bruto} /></Linha>
             {t.desconto > 0 && (
@@ -244,5 +251,31 @@ function Detalhe({ p, onFechar }: { p?: Pedido; onFechar: () => void }) {
         }}
       />
     </>
+  );
+}
+
+// Atraso num pedido só: empurra a hora prevista. O cliente vê na hora, na página de acompanhamento.
+function Previsao({ p }: { p: Pedido }) {
+  const { mudarStatus, avisar } = useStore();
+  if (p.agendadoPara || !p.previsaoEm || (p.status !== "feito" && p.status !== "saiu")) return null;
+  const somar = (min: number) => {
+    const previsaoEm = Math.max(p.previsaoEm!, Date.now()) + min * 60_000;
+    mudarStatus(p, p.status, { previsaoEm });
+    avisar(`Previsão do pedido ${p.numero ? `nº ${p.numero} ` : ""}agora é ${horaLocal(previsaoEm)}.`, () => mudarStatus(p, p.status, { previsaoEm: p.previsaoEm }));
+  };
+  return (
+    <div className="flex flex-col gap-2 rounded-[var(--radius-ctl)] bg-tisna p-3">
+      <p className="flex items-baseline justify-between gap-3">
+        <span className="text-creme-2">Chega por volta de</span>
+        <span className="num font-display text-2xl">{horaLocal(p.previsaoEm)}</span>
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {[10, 20, 30].map((m) => (
+          <Botao key={m} onClick={() => somar(m)} className="min-h-12 px-2 text-base">
+            +{m} min
+          </Botao>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -2,7 +2,7 @@
 import { conta, type ConfigEstoque, type Embalagem, type Pedido, type Produto, type TipoMovimento } from "./types";
 
 type Mapa = Record<string, number>;
-type PedidoPotes = Pick<Pedido, "itens" | "status" | "dia">;
+type PedidoPotes = Pick<Pedido, "itens" | "status" | "dia" | "semPote">;
 
 export const NOME_TIPO: Record<TipoMovimento, string> = { venda: "Venda", compra: "Compra", ajuste: "Ajuste", cancelamento: "Cancelamento" };
 
@@ -14,7 +14,7 @@ export function chave(p: PedidoPotes | null, hoje: string) {
   if (!p || !tiraPote(p, hoje)) return "";
   const itens: Mapa = {};
   for (const i of p.itens) if (i.qtd > 0) itens[i.produtoId] = (itens[i.produtoId] ?? 0) + i.qtd;
-  return Object.keys(itens).sort().map((id) => `${id}:${itens[id]}`).join(",");
+  return Object.keys(itens).sort().map((id) => `${id}:${itens[id]}`).join(",") + (p.semPote ? "|sem-pote" : "");
 }
 
 // Potes que o pedido tira do estoque, pela receita de cada produto e o saco da entrega.
@@ -22,7 +22,8 @@ export function consumo(p: PedidoPotes | null, produtos: Pick<Produto, "id" | "p
   const out: Mapa = {};
   if (!p || !tiraPote(p, hoje)) return out;
   const soma = (id: string, q: number) => id && q && (out[id] = (out[id] ?? 0) + q);
-  for (const i of p.itens) for (const parte of produtos.find((x) => x.id === i.produtoId)?.potes ?? []) soma(parte.embalagemId, i.qtd);
+  // Sem pote (cliente trouxe o dele): só o saco da entrega sai.
+  if (!p.semPote) for (const i of p.itens) for (const parte of produtos.find((x) => x.id === i.produtoId)?.potes ?? []) soma(parte.embalagemId, i.qtd);
   if (cfg.sacoPorPedido) soma(cfg.sacoId, 1);
   return out;
 }
@@ -86,6 +87,13 @@ export function planoCarga(pedidos: Pedido[], produtos: Pick<Produto, "id" | "po
   const usado = somar(linhas.map((l) => l.potes));
   const saldo = (id: string) => (compra[id] ?? 0) - (usado[id] ?? 0);
   return { linhas, usado, saldo };
+}
+
+// Potes que saíram nos pedidos (o saco da entrega não conta).
+export function potesUsados(pedidos: PedidoPotes[], produtos: Pick<Produto, "id" | "potes">[], cfg: ConfigEstoque, hoje: string) {
+  const m = somar(pedidos.map((p) => consumo(p, produtos, cfg, hoje)));
+  delete m[cfg.sacoId];
+  return m;
 }
 
 const CANAIS = { whatsapp: "WhatsApp", ifood: "iFood", site: "Site" } as const;

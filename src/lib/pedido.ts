@@ -1,5 +1,5 @@
 import { calcPedido, custoPorKg, custoProducao } from "./calc";
-import { fimDeSemana, somaDias } from "./format";
+import { diaLocal, fimDeSemana, somaDias } from "./format";
 import { conta, type Canal, type FormaPagamento, type Pedido, type Premissas, type Producao, type StatusPedido } from "./types";
 
 export function producaoDoDia(producoes: Producao[], dia: string, prem: Premissas) {
@@ -25,4 +25,12 @@ export function panela(producoes: Producao[], pedidos: Pedido[], prem: Premissas
   const vendido = pedidos.filter((p) => p.fimDeSemana === fds && contar(p.status)).reduce((s, p) => s + calcPedido(p).pesoG, 0);
   const total = prod.producao.rendimentoG;
   return { ...prod, total, vendido, resta: Math.max(0, total - vendido) };
+}
+
+// Encomenda (lançada antes do dia da entrega) avisa a partir das 8h da véspera, até alguém marcar "visto".
+export function lembretes(pedidos: Pedido[], agora = Date.now()) {
+  const hoje = diaLocal(agora);
+  return pedidos
+    .filter((p) => p.status === "feito" && !p.lembreteVistoEm && p.dia >= hoje && p.dia > diaLocal(p.criadoEm) && agora >= Date.parse(`${somaDias(p.dia, -1)}T08:00:00-03:00`))
+    .sort((a, b) => a.dia.localeCompare(b.dia) || (a.agendadoPara ?? 0) - (b.agendadoPara ?? 0));
 }

@@ -12,6 +12,7 @@
     "seed": "tsx --env-file-if-exists=.env.local scripts/seed.mts",
     "seed:emulador": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-cantinho tsx scripts/seed.mts --exemplos",
     "usuario": "tsx --env-file-if-exists=.env.local scripts/usuario.mts",
+    "fidelidade:teste": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=demo-cantinho tsx scripts/fidelidade-teste.mts",
     "usuario:emulador": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-cantinho tsx scripts/usuario.mts",
     "test": "vitest run src",
     "test:regras": "PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH firebase emulators:exec --only firestore \"vitest run tests --no-file-parallelism\"",

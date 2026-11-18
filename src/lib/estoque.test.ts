@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cargaInicial, configEstoque, embalagens, receitas } from "@/data/estoque";
-import { chave, consumo, daPraMais, diferenca, faltando, nivel, somar } from "./estoque";
+import { chave, consumo, daPraMais, diferenca, faltando, nivel, potesUsados, somar } from "./estoque";
 import type { Embalagem, ItemPedido, Pedido, StatusPedido } from "./types";
 
 const produtos = Object.entries(receitas).map(([id, potes]) => ({ id, potes }));
@@ -21,6 +21,17 @@ describe("consumo", () => {
     expect(consumo(ped([["feijoada-3", 1]], "cancelado"), produtos, configEstoque, hoje)).toEqual({});
     expect(consumo(ped([["feijoada-3", 1]], "feito", "2026-12-30"), produtos, configEstoque, hoje)).toEqual({});
     expect(consumo(ped([["feijoada-3", 1]], "feito", "2026-12-30"), produtos, configEstoque, "2026-12-30")).toEqual({ "pote-1000": 1, "pote-750": 1, "pote-250": 2, "saco-entrega": 1 });
+  });
+});
+
+describe("sem pote", () => {
+  const a = ped([["feijoada-2", 1]]);
+  it("só o saco sai do estoque e a chave muda", () => {
+    expect(consumo({ ...a, semPote: true }, produtos, configEstoque, hoje)).toEqual({ "saco-entrega": 1 });
+    expect(chave({ ...a, semPote: true }, hoje)).not.toBe(chave(a, hoje));
+  });
+  it("potesUsados soma o período sem o saco", () => {
+    expect(potesUsados([a, { ...a, semPote: true }, ped([["feijoada-individual", 2]])], produtos, configEstoque, hoje)).toEqual({ "pote-750": 1, "pote-500": 3, "pote-250": 4 });
   });
 });
 
