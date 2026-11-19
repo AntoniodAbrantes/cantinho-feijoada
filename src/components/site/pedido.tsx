@@ -168,7 +168,6 @@ export function BotaoAbertura() {
   );
 }
 
-const peso = (g: number) => (g >= 1000 && g % 1000 === 0 ? `${g / 1000} kg` : `${g} g`);
 
 export function Cardapio() {
   const { dados } = usePedido();
@@ -191,7 +190,7 @@ export function Cardapio() {
             <div className="flex flex-col gap-1.5">
               <h3 className="font-display text-[32px] uppercase leading-[0.95]">{i.nome}</h3>
               <p className="text-lg text-creme-2">
-                {peso(i.pesoG)} de feijoada{ACOMPANHAMENTOS[i.id] ? <>, com {ACOMPANHAMENTOS[i.id]}</> : ehSimples(i) && ", sem arroz e sem farofa"}.
+                {ACOMPANHAMENTOS[i.id] ? `Feijoada com ${ACOMPANHAMENTOS[i.id]}.` : ehSimples(i) ? "Só a feijoada, sem arroz e sem farofa." : "Feijoada."}
               </p>
             </div>
             <div className="flex items-center justify-between gap-3">
