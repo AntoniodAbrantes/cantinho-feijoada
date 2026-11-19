@@ -2,7 +2,7 @@ import Image from "next/image";
 import { Selo } from "@/components/ui";
 import { BotaoAbertura, Cardapio, PedirDeNovo, PedidoProvider, StatusLoja, UltimoPedido } from "@/components/site/pedido";
 import { FOTOS } from "@/data/fotos";
-import { INSTAGRAM, WHATSAPP_TEXTO, linkInstagram, linkWhatsapp } from "@/lib/contato";
+import { EMAIL, INSTAGRAM, WHATSAPP_TEXTO, linkInstagram, linkWhatsapp } from "@/lib/contato";
 import { resumoFaixas } from "@/lib/entrega";
 import { brl } from "@/lib/format";
 import { DIAS_LOJA, NOME_DIA } from "@/lib/loja";
@@ -130,6 +130,9 @@ export default async function Site() {
             </a>
             <a href={linkInstagram} className="font-semibold underline-offset-4 active:underline">
               Instagram @{INSTAGRAM}
+            </a>
+            <a href={`mailto:${EMAIL}`} className="break-all font-semibold underline-offset-4 active:underline">
+              {EMAIL}
             </a>
           </div>
           <p className="text-creme-3">Delivery em João Pessoa · sexta, sábado e domingo, no almoço.</p>
