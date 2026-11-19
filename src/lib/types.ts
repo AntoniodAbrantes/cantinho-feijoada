@@ -188,6 +188,20 @@ export interface Pedido extends PedidoBase {
   lembreteEm?: number;
   lembreteVistoEm?: number;
   fidelidade?: Resgate; // pedido que resgatou o presente do Selo do Cantinho (não ganha selo)
+  cupom?: string; // código do cupom usado no site (o desconto em si fica em `desconto`)
+}
+
+// cupons/{CODIGO}. Usos saem dos pedidos com esse cupom (cancelado devolve). Regras opcionais.
+export interface Cupom {
+  id: string; // = código, em maiúsculas
+  tipo: "valor" | "pct";
+  valor: number; // centavos ou pontos-base
+  ativo: boolean;
+  validoAte?: string; // aaaa-mm-dd, vale o dia inteiro (Fortaleza)
+  limiteUsos?: number;
+  umPorTelefone: boolean;
+  minimo?: number; // centavos, sobre os itens
+  criadoEm: number;
 }
 
 // Selo do Cantinho: a cada `meta` pedidos entregues, uma feijoada de presente.

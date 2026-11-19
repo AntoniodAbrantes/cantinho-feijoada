@@ -5,13 +5,14 @@ import { adminDb } from "./admin";
 import { ENTREGA } from "@/data/entrega";
 import { calcularEntrega, rotaOsrm, type Config, type Rota } from "./entrega";
 import { calcPedido, itemDoProduto } from "../calc";
+import { descontoDoCupom, erroCupom, normalizarCupom, usosDoCupom } from "../cupom";
 import { FIDELIDADE_PADRAO, cartao, itemPremio, normalizarTelefone, tamanhoDoPedido } from "../fidelidade";
 import { diaLocal, fimDeSemana } from "../format";
 import { horariosAgenda, lojaAberta } from "../loja";
 import { panela, taxasDoMomento } from "../pedido";
 import type { Ponto } from "../entrega";
 import { cardapioSite, erroCarrinho, errosCliente, type Carrinho, type DadosCliente } from "../site";
-import type { AjusteSelo, ConfigFidelidade, Loja, Pedido, Premissas, Producao, Produto } from "../types";
+import type { AjusteSelo, ConfigFidelidade, Cupom, Loja, Pedido, Premissas, Producao, Produto } from "../types";
 
 // shortcut: limites propostos no plano, ainda a confirmar com o Antonio.
 export const LIMITE_TELEFONE_HORA = 3;
@@ -42,6 +43,8 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
   if (c.agendado !== undefined && !Number.isSafeInteger(c.agendado)) throw invalido;
   const pr = c.premio as Record<string, unknown> | undefined;
   if (pr !== undefined && (typeof pr !== "object" || pr === null || !ehTexto(pr.escolhidoId, 60))) throw invalido;
+  if (c.cupom !== undefined && !ehTexto(c.cupom, 40)) throw invalido;
+  const cupom = c.cupom ? normalizarCupom(c.cupom as string) : "";
   const t = (v: unknown) => (v as string).trim();
   return {
     itens: Object.fromEntries(pares) as Carrinho,
@@ -59,6 +62,7 @@ export function lerCorpo(corpo: unknown): { itens: Carrinho; cliente: DadosClien
       ...(l && { local: { lat: l.lat as number, lng: l.lng as number } }),
       ...(c.agendado !== undefined && { agendado: c.agendado as number }),
       ...(pr && { premio: { escolhidoId: pr.escolhidoId as string } }),
+      ...(cupom && { cupom }),
     },
   };
 }
@@ -86,6 +90,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
   const limIp = db.doc(`limites/ip-${hash(ip)}`);
   const contador = db.doc("config/contador");
   const entrega = await entregaDoPedido(cliente.local, config, rota);
+  const codigo = cliente.cupom;
 
   return db.runTransaction(async (t) => {
     const [lojaS, premS, prodS, producoesS, pedidosS, telS, ipS, contS, fidS, cliS, doTelS] = await Promise.all([
@@ -101,6 +106,8 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       t.get(db.doc(`fidelidade/${cliente.telefone}`)),
       t.get(db.collection("pedidos").where("telefone", "==", cliente.telefone)),
     ]);
+    // Cupom: o cadastro e os usos de todo mundo, lidos na transação (dois pedidos juntos não passam do limite).
+    const [cupomS, usosS] = codigo ? await Promise.all([t.get(db.doc(`cupons/${codigo}`)), t.get(db.collection("pedidos").where("cupom", "==", codigo))]) : [null, null];
 
     const loja = lojaS.data() as Loja | undefined;
     if (!loja) throw new Recusa(409, "A loja tá fechada agora.");
@@ -131,6 +138,16 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
     const erro = erroCarrinho(comBrinde, cardapio, restaG);
     if (erro) throw new Recusa(409, erro);
 
+    let desconto: Pedido["desconto"] = { tipo: "valor", informado: 0, motivo: "" };
+    if (codigo) {
+      const c = cupomS?.exists ? ({ ...cupomS.data(), id: cupomS.id } as Cupom) : null;
+      const usos = usosS!.docs.map((d) => d.data() as Pedido);
+      const itensPagos = cardapio.reduce((s, i) => s + (itens[i.id] ?? 0) * i.preco, 0);
+      const e = erroCupom(c, { hoje: diaLocal(agora), itens: itensPagos, usos: usosDoCupom(usos, codigo), usosDoTelefone: usosDoCupom(lista<Pedido>(doTelS), codigo), comPresente: !!brinde });
+      if (e) throw new Recusa(409, e);
+      desconto = descontoDoCupom(c!);
+    }
+
     const linhas = cardapio
       .filter((i) => itens[i.id] > 0)
       .map((i) => itemDoProduto(produtos.find((p) => p.id === i.id)!, "site", itens[i.id], pan?.custoKg ?? 0, prem));
@@ -138,7 +155,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
     const base = {
       canal: "site" as const,
       itens: linhas,
-      desconto: { tipo: "valor" as const, informado: 0, motivo: "" },
+      desconto,
       taxaEntrega: entrega ? entrega.taxa : prem.taxaEntrega.valor,
       custoEntrega: prem.custoEntrega.valor,
       pagamento: cliente.pagamento,
@@ -171,6 +188,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       trocoPara,
       rastreio,
       ...(brinde && { fidelidade: brinde.resgate }),
+      ...(codigo && { cupom: codigo }),
     };
     // O que o cliente vê na página de acompanhamento: sem custo, lucro, telefone nem endereço.
     const publico = {
@@ -180,6 +198,7 @@ export async function criarPedido(itens: Carrinho, cliente: DadosCliente, ip: st
       nome: cliente.nome.split(" ")[0],
       itens: linhas.map((i) => ({ nome: i.nome, qtd: i.qtd, preco: i.preco })),
       taxaEntrega: base.taxaEntrega,
+      ...(codigo && { cupom: codigo, desconto: calcPedido(base).desconto }),
       total,
       pagamento: cliente.pagamento,
       trocoPara,

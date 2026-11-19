@@ -9,7 +9,7 @@ import { sincronizarPotes } from "./potes";
 import { fb } from "./firebase";
 import { FIDELIDADE_PADRAO } from "./fidelidade";
 import { TEMPO_PADRAO } from "./tempo";
-import { conta, type ClienteFidelidade, type ConfigFidelidade, type TempoEntrega, type Baixa, type ConfigEstoque, type Embalagem, type Loja, type Cenario, type Compra, type Pedido, type Premissas, type Producao, type Produto, type StatusPedido } from "./types";
+import { conta, type Cupom, type ClienteFidelidade, type ConfigFidelidade, type TempoEntrega, type Baixa, type ConfigEstoque, type Embalagem, type Loja, type Cenario, type Compra, type Pedido, type Premissas, type Producao, type Produto, type StatusPedido } from "./types";
 
 // set faz merge; delete apaga. Tudo num lote só: atômico e funciona offline.
 export type Op = { caminho: string; dados?: object; apagar?: boolean };
@@ -35,6 +35,7 @@ interface Dados {
   baixas: Baixa[];
   estoque: ConfigEstoque | null; // null = estoque de potes ainda não começou
   fidelidade: ClienteFidelidade[]; // só quem teve ajuste manual de selo
+  cupons: Cupom[];
   cfgFidelidade: ConfigFidelidade;
   tempo: TempoEntrega;
 }
@@ -55,8 +56,8 @@ interface Store extends Omit<Dados, "premissas"> {
 }
 
 const Ctx = createContext<Store | null>(null);
-const vazio: Dados = { produtos: [], premissas: null, producoes: [], pedidos: [], compras: [], cenarios: [], embalagens: [], baixas: [], estoque: null, fidelidade: [], cfgFidelidade: FIDELIDADE_PADRAO, tempo: TEMPO_PADRAO };
-const COLECOES = 12;
+const vazio: Dados = { produtos: [], premissas: null, producoes: [], pedidos: [], compras: [], cenarios: [], embalagens: [], baixas: [], estoque: null, fidelidade: [], cupons: [], cfgFidelidade: FIDELIDADE_PADRAO, tempo: TEMPO_PADRAO };
+const COLECOES = 13;
 
 // Mexe no estoque das bebidas do pedido dentro do mesmo lote (atômico e funciona offline).
 function estoqueNoLote(b: WriteBatch, itens: Pedido["itens"], sinal: 1 | -1) {
@@ -137,6 +138,7 @@ export function StoreProvider({ usuario, children }: { usuario: User; children: 
       lista("compras", query(c("compras"), orderBy("data", "desc"))),
       lista("cenarios", query(c("cenarios"), orderBy("ordem"))),
       lista("fidelidade", query(c("fidelidade"))),
+      lista("cupons", query(c("cupons"))),
       ...(["cfgFidelidade", "tempo"] as const).map((k) =>
         onSnapshot(
           doc(db, "config", k === "tempo" ? "tempo" : "fidelidade"),

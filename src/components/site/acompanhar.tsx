@@ -32,6 +32,8 @@ interface Rastreio {
   agendadoPara?: number;
   avaliacao?: { nota: number };
   selo?: { antes: number; meta: number; resgate: boolean; ganha: boolean };
+  cupom?: string;
+  desconto?: number;
 }
 
 
@@ -136,6 +138,12 @@ export function Acompanhar({ token }: { token: string }) {
                 <span className="num text-creme-2">{brl(i.qtd * i.preco)}</span>
               </p>
             ))}
+            {r.cupom && r.desconto ? (
+              <p className="flex justify-between gap-3 text-lg text-lucro">
+                <span>Cupom {r.cupom}</span>
+                <span className="num">− {brl(r.desconto)}</span>
+              </p>
+            ) : null}
             <p className="flex justify-between gap-3 text-lg text-creme-2">
               <span>Entrega</span>
               <span className="num">{taxaTexto(r.taxaEntrega)}</span>

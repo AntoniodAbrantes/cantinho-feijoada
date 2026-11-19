@@ -42,7 +42,7 @@ export default function Pedidos() {
           bruto: reais(t.bruto), desconto: reais(t.desconto), motivo_desconto: p.desconto.motivo, liquido: reais(t.liquido), taxa_entrega: reais(p.taxaEntrega),
           taxas_ifood: reais(t.taxasIfood), taxa_pagamento: reais(t.taxaPagamento), custo: reais(t.custo), lucro: reais(t.lucro), margem: pctFmt(t.margem, 1),
           pagamento: PAGAMENTO[p.pagamento], usou_pote: p.semPote ? "Não" : "Sim", whatsapp: p.telefone ?? "",
-          resgate_fidelidade: p.fidelidade ? "Sim" : "", premio_original: p.fidelidade?.premioNome ?? "", premio_escolhido: p.fidelidade?.escolhidoNome ?? "",
+          cupom: p.cupom ?? "", resgate_fidelidade: p.fidelidade ? "Sim" : "", premio_original: p.fidelidade?.premioNome ?? "", premio_escolhido: p.fidelidade?.escolhidoNome ?? "",
           valor_troca: p.fidelidade ? reais(p.fidelidade.troca) : "", custo_premio: reais(p.itens.filter((i) => i.brinde).reduce((s, i) => s + i.qtd * i.custo, 0)), obs: p.obs,
         };
       }),

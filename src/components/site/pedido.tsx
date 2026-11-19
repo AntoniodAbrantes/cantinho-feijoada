@@ -18,6 +18,7 @@ import { EnderecoEntrega, useTaxa, type Taxa } from "./endereco";
 import { TempoEstimado, useTempo } from "./tempo";
 import { BlocoSelos } from "@/components/selos";
 import { normalizarTelefone, telefoneValido } from "@/lib/fidelidade";
+import { normalizarCupom, textoCupom } from "@/lib/cupom";
 import type { Selos } from "@/lib/servidor/fidelidade";
 import { resumoFaixas, taxaTexto, type Ponto } from "@/lib/entrega";
 import type { Endereco } from "@/lib/types";
@@ -323,7 +324,20 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
     ? { id: escolha.escolhidoId, nome: escolha.escolhidoId === selos.premio.id ? selos.premio.nome : selos.trocas.find((t) => t.id === escolha.escolhidoId)!.nome, preco: selos.trocas.find((t) => t.id === escolha.escolhidoId)?.diferenca ?? 0 }
     : null;
 
-  const sub = subtotal(qtd, dados.itens) + (brinde?.preco ?? 0);
+  // Cupom: só nos itens pagos, e não junta com o presente (o presente ganha e o cupom sai, com aviso).
+  const [cupom, setCupom] = useState<CupomAplicado | null>(null);
+  const [avisoCupom, setAvisoCupom] = useState("");
+  const temBrinde = !!brinde;
+  useEffect(() => {
+    if (!temBrinde || !cupom) return;
+    setCupom(null);
+    setAvisoCupom("O cupom não junta com o presente do Selo, então tirei o cupom. Prefere o cupom? Guarda o presente pra depois.");
+  }, [temBrinde, cupom]);
+  const itensPagos = subtotal(qtd, dados.itens);
+  const desconto = !cupom || itensPagos < cupom.minimo ? 0 : Math.min(itensPagos, cupom.tipo === "valor" ? cupom.valor : Math.round((itensPagos * cupom.valor) / 10000));
+  const erroCupom = cupom && itensPagos < cupom.minimo ? `Esse cupom vale em pedidos a partir de ${brl(cupom.minimo)} em itens.` : "";
+
+  const sub = itensPagos + (brinde?.preco ?? 0) - desconto;
   const ativo = dados.entrega.ativo; // taxa por distância (com mapa) ou fixa
   const taxa = useTaxa(cliente.local, ativo);
   const total = sub + (ativo ? (taxa.estado === "ok" ? taxa.taxa : 0) : dados.taxaEntrega);
@@ -369,7 +383,7 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
       const r = await fetch("/api/pedido", {
         method: "POST",
         headers: { "content-type": "application/json", ...(token ? { "x-firebase-appcheck": token } : { "x-appcheck-falha": encodeURIComponent(falhaToken || "sem chave") }) },
-        body: JSON.stringify({ itens: qtd, cliente: { ...cliente, ...(quando && { agendado: quando }), ...(brinde && { premio: { escolhidoId: brinde.id } }) } }),
+        body: JSON.stringify({ itens: qtd, cliente: { ...cliente, ...(quando && { agendado: quando }), ...(brinde && { premio: { escolhidoId: brinde.id } }), ...(cupom && { cupom: cupom.codigo }) } }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.erro ?? "Não consegui enviar agora.");
@@ -428,14 +442,28 @@ function Checkout({ etapa, setEtapa, dados }: { etapa: Etapa; setEtapa: (e: Etap
           )}
           {etapa === "revisao" && <EtapaRevisao dados={dados} cliente={cliente} quando={quando} brinde={brinde} />}
           {etapa === "revisao" && erroQuando && <p role="alert" className="font-semibold text-prejuizo">{erroQuando}</p>}
-          <Totais sub={sub} dados={dados} taxa={taxa} brinde={brinde} />
+          {etapa === "revisao" && (
+            <CampoCupom
+              cupom={cupom}
+              setCupom={(c) => {
+                setCupom(c);
+                setAvisoCupom("");
+              }}
+              telefone={cliente.telefone}
+              itens={itensPagos}
+              comPresente={!!brinde}
+              erro={erroCupom}
+              aviso={avisoCupom}
+            />
+          )}
+          <Totais sub={sub} dados={dados} taxa={taxa} brinde={brinde} cupom={cupom && desconto ? { codigo: cupom.codigo, desconto } : null} />
           {etapa === "carrinho" && erroItens && sub > 0 && <p role="alert" className="font-semibold text-prejuizo">{erroItens}</p>}
           {erro && <p role="alert" className="font-semibold text-prejuizo">{erro}</p>}
         </div>
 
         <div className="sticky bottom-0 -mx-4 border-t border-linha bg-carvao px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3">
           {etapa === "revisao" ? (
-            <button onClick={enviar} disabled={enviando || !!erroItens || !!erroEntrega || !!erroQuando} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
+            <button onClick={enviar} disabled={enviando || !!erroItens || !!erroEntrega || !!erroQuando || !!erroCupom} className={cx(botaoPrincipal, "w-full disabled:opacity-50")}>
               {enviando ? "Enviando…" : `${quando ? "Agendar" : "Enviar"} pedido · ${brl(total)}`}
             </button>
           ) : (
@@ -482,7 +510,9 @@ function linkFora(e: Endereco, itens: string[]) {
 
 type Brinde = { id: string; nome: string; preco: number } | null;
 
-function Totais({ sub, dados, taxa, brinde }: { sub: number; dados: DadosSite; taxa: Taxa; brinde: Brinde }) {
+type CupomAplicado = { codigo: string; tipo: "valor" | "pct"; valor: number; minimo: number };
+
+function Totais({ sub, dados, taxa, brinde, cupom }: { sub: number; dados: DadosSite; taxa: Taxa; brinde: Brinde; cupom: { codigo: string; desconto: number } | null }) {
   if (!sub && !brinde) return null;
   const ativo = dados.entrega.ativo;
   const entrega = !ativo ? dados.taxaEntrega : taxa.estado === "ok" ? taxa.taxa : null;
@@ -490,8 +520,14 @@ function Totais({ sub, dados, taxa, brinde }: { sub: number; dados: DadosSite; t
     <div className="flex flex-col gap-2 rounded-[var(--radius-card)] bg-brasa p-4">
       <p className="flex justify-between text-lg text-creme-2">
         <span>Itens</span>
-        <span className="num">{brl(sub - (brinde?.preco ?? 0))}</span>
+        <span className="num">{brl(sub - (brinde?.preco ?? 0) + (cupom?.desconto ?? 0))}</span>
       </p>
+      {cupom && (
+        <p className="flex justify-between gap-3 text-lg text-lucro">
+          <span>Cupom {cupom.codigo}</span>
+          <span className="num">− {brl(cupom.desconto)}</span>
+        </p>
+      )}
       {brinde && (
         <p className="flex justify-between gap-3 text-lg text-milho">
           <span>Presente: {brinde.nome}</span>
@@ -659,4 +695,76 @@ function useSelos(telefone: string) {
     };
   }, [tel, valido]);
   return s;
+}
+
+// "Tem cupom?" na revisão. O servidor diz se vale; no envio, a rota confere de novo.
+function CampoCupom({ cupom, setCupom, telefone, itens, comPresente, erro, aviso }: { cupom: CupomAplicado | null; setCupom: (c: CupomAplicado | null) => void; telefone: string; itens: number; comPresente: boolean; erro: string; aviso: string }) {
+  const [aberto, setAberto] = useState(false);
+  const [codigo, setCodigo] = useState("");
+  const [indo, setIndo] = useState(false);
+  const [falha, setFalha] = useState("");
+
+  const aplicar = async () => {
+    if (comPresente) return setFalha("O cupom não junta com o presente do Selo. Pra usar o cupom, volta e guarda o presente pra depois.");
+    setIndo(true);
+    setFalha("");
+    try {
+      const r = await fetch("/api/cupom", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ codigo, telefone, itens }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.erro ?? "Não consegui conferir o cupom agora.");
+      setCupom(j as CupomAplicado);
+      setAberto(false);
+      setCodigo("");
+    } catch (e) {
+      setFalha((e as Error).message);
+    } finally {
+      setIndo(false);
+    }
+  };
+
+  if (cupom)
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-3 rounded-[var(--radius-ctl)] border border-lucro px-4 py-3">
+          <span>
+            <span className="block font-display text-xl uppercase leading-none text-lucro">{cupom.codigo}</span>
+            <span className="text-creme-2">{textoCupom(cupom)}</span>
+          </span>
+          <button type="button" onClick={() => setCupom(null)} className="font-semibold text-creme-2 underline underline-offset-4">
+            Tirar
+          </button>
+        </div>
+        {erro && <p role="alert" className="font-semibold text-prejuizo">{erro}</p>}
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-2">
+      {aviso && <p role="status" className="text-creme-2">{aviso}</p>}
+      {!aberto ? (
+        <button type="button" onClick={() => setAberto(true)} className="self-start text-lg font-semibold text-milho underline underline-offset-4">
+          Tem cupom?
+        </button>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (codigo) aplicar();
+          }}
+          className="flex flex-col gap-2"
+        >
+          <Campo rotulo="Cupom de desconto">
+            {(id) => (
+              <div className="flex gap-2">
+                <input id={id} value={codigo} onChange={(e) => setCodigo(normalizarCupom(e.target.value))} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="EX.: FEIJAO10" aria-invalid={!!falha} className={cx(estiloCampo, "flex-1 uppercase", falha && "border-prejuizo")} />
+                <button type="submit" disabled={!codigo || indo} className="min-h-12 rounded-[var(--radius-ctl)] bg-tisna px-4 font-semibold uppercase tracking-wide active:bg-linha disabled:opacity-50">
+                  {indo ? "…" : "Aplicar"}
+                </button>
+              </div>
+            )}
+          </Campo>
+          {falha && <p role="alert" className="font-semibold text-prejuizo">{falha}</p>}
+        </form>
+      )}
+    </div>
+  );
 }

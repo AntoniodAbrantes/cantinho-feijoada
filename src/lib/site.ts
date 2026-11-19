@@ -86,6 +86,7 @@ export interface DadosCliente {
   obs: string;
   agendado?: number; // começo da faixa agendada (epoch ms); sem = pra agora
   premio?: { escolhidoId: string }; // usar o presente do Selo do Cantinho neste pedido (a rota confere)
+  cupom?: string; // código do cupom (a rota confere)
 }
 export type CampoCliente = "nome" | "telefone" | "rua" | "numero" | "bairro" | "complemento" | "referencia" | "cep" | "cidade" | "pagamento" | "trocoPara" | "obs";
 
