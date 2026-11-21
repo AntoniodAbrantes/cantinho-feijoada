@@ -12,3 +12,5 @@ export const LINK_AVALIACAO_GOOGLE = "";
 // Pix do pedido: a página de acompanhamento mostra QR e copia-e-cola com o valor certo.
 // nome: máximo de 25 letras no código Pix (o app do banco mostra o nome completo da conta).
 export const PIX = { chave: "68429872000103", nome: "Jose Arthur D de Abrantes", cidade: "João Pessoa" };
+// Endereço oficial do site (o domínio sem www redireciona pra cá): canonical, sitemap e dados estruturados.
+export const SITE = "https://www.cantinhodafeijoada.com.br";

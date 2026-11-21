@@ -1,19 +1,74 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { Selo } from "@/components/ui";
 import { BotaoAbertura, Cardapio, PedirDeNovo, PedidoProvider, StatusLoja, UltimoPedido } from "@/components/site/pedido";
 import { FOTOS } from "@/data/fotos";
-import { EMAIL, INSTAGRAM, WHATSAPP_TEXTO, linkInstagram, linkWhatsapp } from "@/lib/contato";
+import { EMAIL, INSTAGRAM, SITE, WHATSAPP, WHATSAPP_TEXTO, linkInstagram, linkWhatsapp } from "@/lib/contato";
 import { resumoFaixas } from "@/lib/entrega";
 import { brl } from "@/lib/format";
 import { DIAS_LOJA, NOME_DIA } from "@/lib/loja";
+import type { DadosSite } from "@/lib/site";
+import type { DiaLoja } from "@/lib/types";
 import { carregarSite } from "@/lib/servidor/cardapio";
 
 // Preço, esgotado e loja aberta vêm do sistema; a página se refaz a cada 30 s.
 export const revalidate = 30;
 
+// Canonical só aqui: no layout, as páginas filhas (sistema, pedido, 404) herdariam o da raiz.
+export const metadata: Metadata = { alternates: { canonical: "/" } };
+
 const CARNES = ["Costela", "Orelha", "Pé", "Rabo", "Charque", "Calabresa", "Linguiça", "Paio"];
 const secao = "mx-auto w-full max-w-xl px-4";
 const rotulo = "text-sm font-semibold uppercase tracking-[0.18em]";
+
+const DIA_SCHEMA: Record<DiaLoja, string> = { sexta: "Friday", sabado: "Saturday", domingo: "Sunday" };
+
+// Dados estruturados (schema.org) pro Google: só o que está no site e no sistema, sem endereço de rua (é só delivery).
+function dadosEstruturados(dados: DadosSite | null) {
+  const horarios = dados && dados.loja.modo !== "fechada" ? DIAS_LOJA.filter((d) => dados.loja.horarios[d]) : [];
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "WebSite", "@id": `${SITE}/#site`, url: `${SITE}/`, name: "Cantinho da Feijoada", inLanguage: "pt-BR" },
+      {
+        "@type": "Restaurant",
+        "@id": `${SITE}/#restaurante`,
+        name: "Cantinho da Feijoada",
+        url: `${SITE}/`,
+        logo: `${SITE}/marca/icone-512.png`,
+        image: `${SITE}/marca/icone-512.png`,
+        description: "Feijoada completa com oito carnes no delivery em João Pessoa, sexta, sábado e domingo, no almoço.",
+        servesCuisine: "Brasileira",
+        foundingDate: "2012",
+        telephone: `+${WHATSAPP}`,
+        email: EMAIL,
+        sameAs: [linkInstagram],
+        address: { "@type": "PostalAddress", addressLocality: "João Pessoa", addressRegion: "PB", addressCountry: "BR" },
+        areaServed: { "@type": "City", name: "João Pessoa" },
+        paymentAccepted: "Pix, dinheiro, cartão de débito, cartão de crédito",
+        currenciesAccepted: "BRL",
+        ...(horarios.length && {
+          openingHoursSpecification: horarios.map((d) => ({
+            "@type": "OpeningHoursSpecification",
+            dayOfWeek: `https://schema.org/${DIA_SCHEMA[d]}`,
+            opens: dados!.loja.horarios[d]!.inicio,
+            closes: dados!.loja.horarios[d]!.fim,
+          })),
+        }),
+        ...(dados?.itens.length && {
+          hasMenu: {
+            "@type": "Menu",
+            hasMenuItem: dados.itens.map((i) => ({
+              "@type": "MenuItem",
+              name: i.nome,
+              offers: { "@type": "Offer", price: (i.preco / 100).toFixed(2), priceCurrency: "BRL" },
+            })),
+          },
+        }),
+      },
+    ],
+  };
+}
 
 function Foto({ src, alt, legenda }: { src: string | null; alt: string; legenda?: string }) {
   if (!src) return null;
@@ -36,6 +91,11 @@ export default async function Site() {
 
   return (
     <PedidoProvider dados={dados}>
+      <script
+        type="application/ld+json"
+        // "<" escapado: nome de produto vem do cadastro e não pode fechar a tag <script>.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(dadosEstruturados(dados)).replace(/</g, "\\u003c") }}
+      />
       <main className="flex flex-col pb-28">
         {/* Abertura */}
         <section className={`${secao} flex min-h-[85svh] flex-col justify-between gap-10 pb-10 pt-[max(20px,env(safe-area-inset-top))]`}>
